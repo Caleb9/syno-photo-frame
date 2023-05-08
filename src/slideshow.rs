@@ -5,16 +5,14 @@ use reqwest::{cookie::CookieStore, StatusCode, Url};
 
 use crate::{
     api::{self, dto::Photo, PhotosApiError},
-    http::Response,
+    http::{Client, Response},
     ErrorToString,
 };
 
 static BATCH_SIZE: u32 = 10;
 
-pub struct Slideshow<P, G> {
-    cookie_store: Arc<dyn CookieStore>,
-    post: P,
-    get: G,
+/// Holds the slideshow state: batch of metadata to identify photos in the API and currently displayed photo index.
+pub struct Slideshow {
     api_url: Url,
     sharing_id: String,
     next_batch_offset: u32,
@@ -22,22 +20,11 @@ pub struct Slideshow<P, G> {
     photo_index: usize,
 }
 
-impl<P, G, R> Slideshow<P, G>
-where
-    P: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
-    G: Fn(&str, &[(&str, &str)]) -> Result<R, String>,
-    R: Response,
-{
-    pub fn new(
-        (cookie_store, post, get): (Arc<dyn CookieStore>, P, G),
-        share_link: &Url,
-    ) -> Result<Self, String> {
+impl Slideshow {
+    pub fn new(share_link: &Url) -> Result<Self, String> {
         let (api_url, sharing_id) = api::parse_share_link(share_link)?;
 
-        Ok(Slideshow {
-            cookie_store,
-            post,
-            get,
+        Ok(Self {
             api_url,
             sharing_id,
             next_batch_offset: 0,
@@ -46,9 +33,21 @@ where
         })
     }
 
-    pub fn get_next_photo(&mut self) -> Result<Bytes, String> {
-        if let None = self.cookie_store.cookies(&self.api_url) {
-            api::login(&self.post, &self.api_url, &self.sharing_id).map_err_to_string()?;
+    pub fn get_next_photo<C, R>(
+        &mut self,
+        (client, cookie_store): (&C, &Arc<dyn CookieStore>),
+    ) -> Result<Bytes, String>
+    where
+        C: Client<R>,
+        R: Response,
+    {
+        if let None = cookie_store.cookies(&self.api_url) {
+            api::login(
+                &|url, form, header| client.post(url, form, header),
+                &self.api_url,
+                &self.sharing_id,
+            )
+            .map_err_to_string()?;
         }
 
         if self.slideshow_ended() {
@@ -59,7 +58,7 @@ where
             /* Fetch next 10 photo DTOs (containing metadata needed to get the actual photo bytes). This way we avoid
              * sending 2 requests for every photo. */
             self.photos_batch = api::get_album_contents(
-                &self.post,
+                &|url, form, header| client.post(url, form, header),
                 &self.api_url,
                 &self.sharing_id,
                 self.next_batch_offset,
@@ -72,12 +71,17 @@ where
 
         if self.photos_batch.len() > 0 {
             let photo = &self.photos_batch[self.photo_index];
-            match api::get_photo(&self.get, &self.api_url, &self.sharing_id, photo) {
+            match api::get_photo(
+                &|url, form| client.get(url, form),
+                &self.api_url,
+                &self.sharing_id,
+                photo,
+            ) {
                 Err(error) => {
                     if let PhotosApiError::InvalidHttpResponse(StatusCode::NOT_FOUND) = error {
                         /* Photo has been removed since we fetched its metadata, try next one */
                         self.photo_index += 1;
-                        return self.get_next_photo();
+                        return self.get_next_photo((client, cookie_store));
                     } else {
                         return Err(error.to_string());
                     }

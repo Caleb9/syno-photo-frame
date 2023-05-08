@@ -1,12 +1,12 @@
 use std::{error::Error, sync::Arc};
 
 use clap::Parser;
-use reqwest::blocking::ClientBuilder;
+use reqwest::{blocking::ClientBuilder, cookie::CookieStore};
 
 use syno_photo_frame::{
     self,
     cli::Cli,
-    http::{self, ReqwestResponse},
+    http::{ReqwestClient, ReqwestResponse},
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -16,12 +16,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .cookie_provider(cookie_store.clone())
         .build()?;
 
-    syno_photo_frame::run::<_, _, ReqwestResponse>(
+    syno_photo_frame::run::<ReqwestClient, ReqwestResponse>(
         &cli,
         (
-            cookie_store,
-            &|url, params, header| http::post(&client, url, params, header),
-            &|url, query| http::get(&client, url, query),
+            &ReqwestClient::new(client),
+            &(cookie_store as Arc<dyn CookieStore>),
         ),
     )?;
 

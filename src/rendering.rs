@@ -26,8 +26,7 @@ pub fn dimensions(video_subsystem: &VideoSubsystem) -> Result<(u32, u32, usize),
 
 pub fn create_canvas(
     video_subsystem: &VideoSubsystem,
-    w: u32,
-    h: u32,
+    (w, h): (u32, u32),
 ) -> Result<Canvas<Window>, String> {
     let window = video_subsystem
         .window("rust-sdl2 demo: Video", w, h)

@@ -1,5 +1,4 @@
 pub use bytes::Bytes;
-use reqwest::blocking::Client;
 pub use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
@@ -15,25 +14,6 @@ pub trait Response {
         T: DeserializeOwned + 'static; /* 'static is needed by automock */
 
     fn bytes(self) -> Result<Bytes, String>;
-}
-
-pub fn post(
-    client: &Client,
-    url: &str,
-    params: &[(&str, &str)],
-    header: Option<(&str, &str)>,
-) -> Result<ReqwestResponse, String> {
-    let mut request_builder = client.post(url).form(&params);
-    if let Some((key, value)) = header {
-        request_builder = request_builder.header(key, value);
-    }
-    let response = request_builder.send().map_err_to_string()?;
-    Ok(ReqwestResponse { response })
-}
-
-pub fn get(client: &Client, url: &str, query: &[(&str, &str)]) -> Result<ReqwestResponse, String> {
-    let response = client.get(url).query(&query).send().map_err_to_string()?;
-    Ok(ReqwestResponse { response })
 }
 
 pub struct ReqwestResponse {
@@ -54,5 +34,54 @@ impl Response for ReqwestResponse {
 
     fn bytes(self) -> Result<Bytes, String> {
         self.response.bytes().map_err_to_string()
+    }
+}
+
+/// Isolates reqwest's Client for testing
+#[derive(Clone)]
+pub struct ReqwestClient {
+    client: reqwest::blocking::Client,
+}
+
+impl ReqwestClient {
+    pub fn new(client: reqwest::blocking::Client) -> Self {
+        Self { client }
+    }
+}
+
+pub trait Client<R>: Clone + Send + 'static {
+    fn post<'a>(
+        &self,
+        url: &str,
+        form: &[(&'a str, &'a str)],
+        header: Option<(&str, &str)>,
+    ) -> Result<R, String>;
+
+    fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<R, String>;
+}
+
+impl Client<ReqwestResponse> for ReqwestClient {
+    fn post(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+        header: Option<(&str, &str)>,
+    ) -> Result<ReqwestResponse, String> {
+        let mut request_builder = self.client.post(url).form(form);
+        if let Some((key, value)) = header {
+            request_builder = request_builder.header(key, value);
+        }
+        let response = request_builder.send().map_err_to_string()?;
+        Ok(ReqwestResponse { response })
+    }
+
+    fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<ReqwestResponse, String> {
+        let response = self
+            .client
+            .get(url)
+            .query(query)
+            .send()
+            .map_err_to_string()?;
+        Ok(ReqwestResponse { response })
     }
 }
