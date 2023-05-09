@@ -19,7 +19,7 @@ const TRANSITION_ALPHA_MIN: f64 = 0f64;
 const TRANSITION_ALPHA_MAX: f64 = 255f64;
 
 impl Transition {
-    pub fn transition(
+    pub fn play(
         &self,
         canvas: &mut Canvas<Window>,
         texture: &Texture,

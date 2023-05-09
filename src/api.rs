@@ -7,7 +7,7 @@ use reqwest::{self, StatusCode, Url};
 
 use PhotosApiError::{InvalidApiResponse, InvalidHttpResponse};
 
-use crate::{http::Response, ErrorToString};
+use super::{http::Response, ErrorToString};
 
 use self::dto::Photo;
 
@@ -18,21 +18,24 @@ pub enum PhotosApiError {
     InvalidApiResponse(&'static str, i32),
 }
 
+#[derive(Debug)]
+pub struct SharingId(String);
+
 /// Returns Synology Photos API URL and sharing id extracted from album share link
-pub fn parse_share_link(share_link: &Url) -> Result<(Url, String), String> {
+pub fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"^(https?://.+)/([^/]+)$").unwrap();
+        static ref RE: Regex = Regex::new(r"^(https?://.+)/([^/]+)/?$").unwrap();
     }
     if let Some(captures) = RE.captures(share_link.as_str()) {
         let api_url =
             Url::parse(&format!("{}/webapi/entry.cgi", &captures[1])).map_err_to_string()?;
-        Ok((api_url, captures[2].to_owned()))
+        Ok((api_url, SharingId(captures[2].to_owned())))
     } else {
-        Err(format!("Invalid share link {share_link}"))
+        Err(format!("Invalid share link: {share_link}"))
     }
 }
 
-pub fn login<F, R>(post: &F, api_url: &Url, sharing_id: &str) -> Result<(), PhotosApiError>
+pub fn login<F, R>(post: &F, api_url: &Url, sharing_id: &SharingId) -> Result<(), PhotosApiError>
 where
     F: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
     R: Response,
@@ -41,13 +44,13 @@ where
         ("api", "SYNO.Core.Sharing.Login"),
         ("method", "login"),
         ("version", "1"),
-        ("sharing_id", sharing_id),
+        ("sharing_id", &sharing_id.0),
     ];
     let response = post(api_url.as_str(), &params, None)?;
     read_response(response, |response| {
         let dto = response.json::<dto::ApiResponse<dto::Login>>()?;
         if !dto.success {
-            Err(InvalidApiResponse("Login", dto.error.unwrap().code))
+            Err(InvalidApiResponse("login", dto.error.unwrap().code))
         } else {
             Ok(())
         }
@@ -57,7 +60,7 @@ where
 pub fn get_album_contents<F, R>(
     post: &F,
     api_url: &Url,
-    sharing_id: &str,
+    sharing_id: &SharingId,
     offset: u32,
     limit: u32,
 ) -> Result<Vec<Photo>, PhotosApiError>
@@ -78,12 +81,12 @@ where
     let response = post(
         api_url.as_str(),
         &params,
-        Some(("X-SYNO-SHARING", sharing_id)),
+        Some(("X-SYNO-SHARING", &sharing_id.0)),
     )?;
     read_response(response, |response| {
         let dto = response.json::<dto::ApiResponse<dto::List<dto::Photo>>>()?;
         if !dto.success {
-            Err(InvalidApiResponse("List", dto.error.unwrap().code))
+            Err(InvalidApiResponse("list", dto.error.unwrap().code))
         } else {
             Ok(dto
                 .data
@@ -96,7 +99,7 @@ where
 pub fn get_photo<F, R>(
     get: &F,
     api_url: &Url,
-    sharing_id: &str,
+    sharing_id: &SharingId,
     photo_dto: &dto::Photo,
 ) -> Result<Bytes, PhotosApiError>
 where
@@ -107,7 +110,7 @@ where
         ("api", "SYNO.Foto.Thumbnail"),
         ("method", "get"),
         ("version", "2"),
-        ("_sharing_id", sharing_id),
+        ("_sharing_id", &sharing_id.0),
         ("id", &photo_dto.id.to_string()),
         ("cache_key", &photo_dto.additional.thumbnail.cache_key),
         ("type", "unit"),
@@ -138,10 +141,10 @@ impl Display for PhotosApiError {
         match *self {
             PhotosApiError::Reqwest(ref reqwest_error) => write!(f, "{reqwest_error}"),
             InvalidHttpResponse(ref status) => {
-                write!(f, "Invalid HTTP response {status}")
+                write!(f, "Invalid HTTP response code: {status}")
             }
             InvalidApiResponse(ref request, ref code) => {
-                write!(f, "{request}: invalid Synology API response {code}")
+                write!(f, "Invalid Synology API '{request}' response code: {code}")
             }
         }
     }
@@ -152,6 +155,12 @@ impl Error for PhotosApiError {}
 impl From<String> for PhotosApiError {
     fn from(value: String) -> Self {
         PhotosApiError::Reqwest(value)
+    }
+}
+
+impl Display for SharingId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -192,5 +201,40 @@ pub mod dto {
     #[derive(Debug, Deserialize)]
     pub struct Thumbnail {
         pub cache_key: String,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_share_link_is_ok_for_valid_link() {
+        let link = Url::parse("https://test.dsm.addr:5001/aa/sharing/FakeSharingId").unwrap();
+
+        let result = parse_share_link(&link);
+
+        assert!(result.is_ok());
+        let (api_url, sharing_id) = result.unwrap();
+        assert_eq!(
+            api_url.as_str(),
+            "https://test.dsm.addr:5001/aa/sharing/webapi/entry.cgi"
+        );
+        assert_eq!(sharing_id.0, "FakeSharingId");
+    }
+
+    #[test]
+    fn parse_share_link_is_ok_for_valid_link2() {
+        let link = Url::parse("https://test.dsm.addr/photo/aa/sharing/FakeSharingId").unwrap();
+
+        let result = parse_share_link(&link);
+
+        assert!(result.is_ok());
+        let (api_url, sharing_id) = result.unwrap();
+        assert_eq!(
+            api_url.as_str(),
+            "https://test.dsm.addr/photo/aa/sharing/webapi/entry.cgi"
+        );
+        assert_eq!(sharing_id.0, "FakeSharingId");
     }
 }

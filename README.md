@@ -1,23 +1,29 @@
-## Set framebuffer to 32bpp depth
+## Building
 
-Add the following to `/boot/cmdline.txt`:
-
+Building with `use-pkgconfig, static-link` SDL2 features requires:
 ```
-video=HDMI-A-1:1920x1080M-32@60
+libsdl2-dev
+libdrm-dev
+libgbm-dev
+```
+Note that this doesn't seem to work as the binary complains when `libsdl2-2.0-0` is not installed.
+
+Building with dynamically linked SDL2 (without `static-link, use-pkgconfig`) requires only `libsdl2-dev`
+
+For targets other than `aarch64-unknown-linux-gnu` `libssl-dev` is also needed.
+
+
+## Running
+```
+libsdl2-2.0-0
+libgl1
+libegl1
 ```
 
-## Startup
 
-`startSlideshow.sh`:
+## Auto-start
 
+In `/etc/rc.local`:
 ```
-#!/bin/sh
-
-if [ -z "$SLIDESHOW" ]; then
-    export SLIDESHOW=1
-    /home/pi/auto-brightness-rpi-tsl2591/auto-brightness-rpi-tsl2591.pex >> /tmp/auto-brightness-rpi-tsl25591.log 2>&1 &
-    /home/pi/syno-photo-frame https://nas.piotrkarasinski.eu/photo/mo/sharing/Wd36CZH2H >> /tmp/synology-photos-slideshow.log 2>&1
-fi
+/home/pi/syno-photo-frame https://{SHARE_LINK} >> /tmp/syno-photo-frame.log 2>&1 &
 ```
-
-Add to `. startSlideshow.sh` to `.profile` (?)

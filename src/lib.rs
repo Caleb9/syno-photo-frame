@@ -42,7 +42,7 @@ where
     let texture_creator = canvas.texture_creator();
     let mut texture = rendering::create_texture(&texture_creator, dimensions)?;
 
-    let slideshow = Arc::new(Mutex::new(Slideshow::new(&cli.share_link)?));
+    let slideshow = Arc::new(Mutex::new(Slideshow::try_from(&cli.share_link)?));
 
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
 
@@ -67,14 +67,14 @@ where
         let next_photo_is_ready = next_photo_thread.is_finished();
         let elapsed_display_duration = Instant::now() - last_change;
         if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
-            Transition::Out.transition(&mut canvas, &texture, &video_subsystem.sdl())?;
+            Transition::Out.play(&mut canvas, &texture, &video_subsystem.sdl())?;
             texture.with_lock(
                 None,
-                rendering::image_to_texture(next_photo_thread.join().unwrap()?, bpp),
+                rendering::image_to_texture(&next_photo_thread.join().unwrap()?, bpp),
             )?;
-            Transition::In.transition(&mut canvas, &texture, &video_subsystem.sdl())?;
-            last_change = Instant::now();
             next_photo_thread = get_next_photo_thread(&slideshow, http, dimensions);
+            Transition::In.play(&mut canvas, &texture, &video_subsystem.sdl())?;
+            last_change = Instant::now();
         } else {
             /* Sleep for a second to avoid maxing out CPU */
             thread::sleep(LOOP_SLEEP_DURATION);
@@ -101,7 +101,7 @@ where
             .map_err_to_string()?
             .get_next_photo((&client, &cookie_store))?;
         let original = image::load_from_memory(&bytes).map_err_to_string()?;
-        let final_image = img::prepare_photo_for_display(&original, dimensions);
+        let final_image = img::fit_to_screen_and_add_background(&original, dimensions);
         Ok(final_image)
     })
 }
@@ -129,9 +129,9 @@ where
     }
     texture.with_lock(
         None,
-        rendering::image_to_texture(next_photo_thread.join().unwrap()?, bpp),
+        rendering::image_to_texture(&next_photo_thread.join().unwrap()?, bpp),
     )?;
-    Transition::In.transition(canvas, &texture, &sdl)?;
+    Transition::In.play(canvas, texture, &sdl)?;
     Ok(false)
 }
 

@@ -15,15 +15,17 @@ reqwest = { version = "0.11.*", features = ["blocking", "cookies", "json"] }
 sdl2 = "0.35.*"
 serde = { version = "1.*", features = ["derive"] }
 
-# [target.aarch64-unknown-linux-gnu.dependencies]
-# # Base docker image used when cross-compiling for aarch64 is Ubuntu based, and has libssl-dev 1.0 available. Raspbian OS
-# # is pure Debian based and uses libssl-dev 1.1. Enabling native-tls-vendored embeds statically linked version of the
-# # library, so cross-compiled binary executes on Raspbian OS.
-# reqwest = { version = "0.11.*", features = ["blocking", "cookies", "json", "native-tls-vendored"] }
-# sdl2 = { version="0.35.*", features = ["bundled", "static-link"]}
+[target.aarch64-unknown-linux-gnu.dependencies]
+# Base docker image used when cross-compiling for aarch64 is Ubuntu based, and has libssl-dev 1.0 available. Raspbian OS
+# is pure Debian based and uses libssl-dev 1.1. Enabling native-tls-vendored embeds statically linked version of the
+# library, so cross-compiled binary executes on Raspbian OS.
+reqwest = { version = "0.11.*", features = ["blocking", "cookies", "json", "native-tls-vendored"] }
+# When compiling for Raspberry Pi, try to embed sdl2 library into the binary. Currently doesn't seem to work, see
+# https://github.com/Rust-SDL2/rust-sdl2/issues/1309
+sdl2 = { version="0.35.*", features = ["use-pkgconfig", "static-link"] }
 
 [package.metadata.cross.target.aarch64-unknown-linux-gnu]
-pre-build = ["dpkg --add-architecture arm64 && apt-get update && apt-get install --assume-yes libsdl2-dev:arm64"]
+pre-build = ["dpkg --add-architecture arm64 && apt-get update && apt-get install --assume-yes libsdl2-dev:arm64 libdrm-dev:arm64 libgbm-dev:arm64"]
 
 [dev-dependencies]
 mockall = "0.11.*"
