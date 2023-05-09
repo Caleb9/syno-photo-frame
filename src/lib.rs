@@ -6,12 +6,18 @@ use std::{
 };
 
 use cli::Cli;
-use slideshow::Slideshow;
-
 use http::{Client, Response};
+use slideshow::Slideshow;
+use transition::Transition;
+
 use image::DynamicImage;
 use reqwest::cookie::CookieStore;
-use sdl2::event::Event;
+use sdl2::{
+    event::Event,
+    render::{Canvas, Texture},
+    video::Window,
+    Sdl, VideoSubsystem,
+};
 
 mod api;
 pub mod cli;
@@ -19,6 +25,9 @@ pub mod http;
 mod img;
 mod rendering;
 mod slideshow;
+mod transition;
+
+const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
 
 pub fn run<C, R>(cli: &Cli, http: (&C, &Arc<dyn CookieStore>)) -> Result<(), String>
 where
@@ -27,6 +36,7 @@ where
 {
     let video_subsystem = rendering::init_video()?;
     let (w, h, bpp) = rendering::dimensions(&video_subsystem)?;
+    // let (w, h) = (w / 4, h / 4);
     let dimensions = (w, h);
     let mut canvas = rendering::create_canvas(&video_subsystem, dimensions)?;
     let texture_creator = canvas.texture_creator();
@@ -35,32 +45,38 @@ where
     let slideshow = Arc::new(Mutex::new(Slideshow::new(&cli.share_link)?));
 
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
+
+    if start_slideshow(
+        &slideshow,
+        http,
+        (w, h, bpp),
+        &video_subsystem,
+        &mut texture,
+        &mut canvas,
+    )? {
+        return Ok(());
+    }
+    let mut last_change = Instant::now();
     let mut next_photo_thread = get_next_photo_thread(&slideshow, http, dimensions);
-    let mut last_change = Instant::now() - photo_change_interval;
-    'mainloop: loop {
-        for event in video_subsystem.sdl().event_pump()?.poll_iter() {
-            match event {
-                Event::Quit { .. } => break 'mainloop,
-                _ => {}
-            }
+
+    loop {
+        if is_exit_requested(&video_subsystem.sdl())? {
+            break;
         }
 
-        let display_duration = Instant::now() - last_change;
         let next_photo_is_ready = next_photo_thread.is_finished();
-        // if display_duration >= photo_change_interval && !next_photo_is_ready {
-        //     println!("Still waiting for next photo");
-        // }
-        if display_duration >= photo_change_interval && next_photo_is_ready {
+        let elapsed_display_duration = Instant::now() - last_change;
+        if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
+            Transition::Out.transition(&mut canvas, &texture, &video_subsystem.sdl())?;
             texture.with_lock(
                 None,
                 rendering::image_to_texture(next_photo_thread.join().unwrap()?, bpp),
             )?;
-            canvas.copy(&texture, None, None)?;
-            canvas.present();
+            Transition::In.transition(&mut canvas, &texture, &video_subsystem.sdl())?;
             last_change = Instant::now();
             next_photo_thread = get_next_photo_thread(&slideshow, http, dimensions);
         } else {
-            const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
+            /* Sleep for a second to avoid maxing out CPU */
             thread::sleep(LOOP_SLEEP_DURATION);
         }
     }
@@ -88,6 +104,45 @@ where
         let final_image = img::prepare_photo_for_display(&original, dimensions);
         Ok(final_image)
     })
+}
+
+fn start_slideshow<C, R>(
+    slideshow: &Arc<Mutex<Slideshow>>,
+    http: (&C, &Arc<dyn CookieStore>),
+    (w, h, bpp): (u32, u32, usize),
+    video_subsystem: &VideoSubsystem,
+    texture: &mut Texture,
+    canvas: &mut Canvas<Window>,
+) -> Result<bool, String>
+where
+    C: Client<R>,
+    R: Response,
+{
+    let next_photo_thread = get_next_photo_thread(&slideshow, http, (w, h));
+    let sdl = video_subsystem.sdl();
+    while !next_photo_thread.is_finished() {
+        if is_exit_requested(&sdl)? {
+            return Ok(true);
+        }
+        /* Sleep for a second to avoid maxing out CPU */
+        thread::sleep(LOOP_SLEEP_DURATION);
+    }
+    texture.with_lock(
+        None,
+        rendering::image_to_texture(next_photo_thread.join().unwrap()?, bpp),
+    )?;
+    Transition::In.transition(canvas, &texture, &sdl)?;
+    Ok(false)
+}
+
+fn is_exit_requested(sdl: &Sdl) -> Result<bool, String> {
+    for event in sdl.event_pump()?.poll_iter() {
+        match event {
+            Event::Quit { .. } => return Ok(true),
+            _ => { /* ignore */ }
+        }
+    }
+    Ok(false)
 }
 
 pub trait ErrorToString<T> {

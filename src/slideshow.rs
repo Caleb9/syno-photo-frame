@@ -12,6 +12,7 @@ use crate::{
 static BATCH_SIZE: u32 = 10;
 
 /// Holds the slideshow state: batch of metadata to identify photos in the API and currently displayed photo index.
+#[derive(Debug)]
 pub struct Slideshow {
     api_url: Url,
     sharing_id: String,

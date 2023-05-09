@@ -16,6 +16,31 @@ pub trait Response {
     fn bytes(self) -> Result<Bytes, String>;
 }
 
+/// Isolates reqwest's Client for testing
+pub trait Client<R>: Clone + Send + 'static {
+    fn post<'a>(
+        &self,
+        url: &str,
+        form: &[(&'a str, &'a str)],
+        header: Option<(&str, &str)>,
+    ) -> Result<R, String>;
+
+    fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<R, String>;
+}
+
+/// Production implementation of `Reqwest`
+#[derive(Clone, Debug)]
+pub struct ReqwestClient {
+    client: reqwest::blocking::Client,
+}
+
+impl ReqwestClient {
+    pub fn new(client: reqwest::blocking::Client) -> Self {
+        Self { client }
+    }
+}
+
+#[derive(Debug)]
 pub struct ReqwestResponse {
     response: reqwest::blocking::Response,
 }
@@ -35,29 +60,6 @@ impl Response for ReqwestResponse {
     fn bytes(self) -> Result<Bytes, String> {
         self.response.bytes().map_err_to_string()
     }
-}
-
-/// Isolates reqwest's Client for testing
-#[derive(Clone)]
-pub struct ReqwestClient {
-    client: reqwest::blocking::Client,
-}
-
-impl ReqwestClient {
-    pub fn new(client: reqwest::blocking::Client) -> Self {
-        Self { client }
-    }
-}
-
-pub trait Client<R>: Clone + Send + 'static {
-    fn post<'a>(
-        &self,
-        url: &str,
-        form: &[(&'a str, &'a str)],
-        header: Option<(&str, &str)>,
-    ) -> Result<R, String>;
-
-    fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<R, String>;
 }
 
 impl Client<ReqwestResponse> for ReqwestClient {

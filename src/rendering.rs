@@ -29,7 +29,7 @@ pub fn create_canvas(
     (w, h): (u32, u32),
 ) -> Result<Canvas<Window>, String> {
     let window = video_subsystem
-        .window("rust-sdl2 demo: Video", w, h)
+        .window("syno-photo-frame", w, h)
         .fullscreen()
         .build()
         .map_err_to_string()?;
@@ -37,7 +37,6 @@ pub fn create_canvas(
     video_subsystem.sdl().mouse().show_cursor(false);
     let mut canvas = window
         .into_canvas()
-        .software()
         .build()
         .map_err_to_string()?;
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
