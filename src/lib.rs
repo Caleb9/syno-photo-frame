@@ -68,10 +68,13 @@ where
         let elapsed_display_duration = Instant::now() - last_change;
         if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
             Transition::Out.play(&mut canvas, &texture, &video_subsystem.sdl())?;
-            texture.with_lock(
-                None,
-                rendering::image_to_texture(&next_photo_thread.join().unwrap()?, bpp),
-            )?;
+            texture
+                .update(
+                    None,
+                    next_photo_thread.join().unwrap()?.as_bytes(),
+                    w as usize * bpp,
+                )
+                .map_err_to_string()?;
             next_photo_thread = get_next_photo_thread(&slideshow, http, dimensions);
             Transition::In.play(&mut canvas, &texture, &video_subsystem.sdl())?;
             last_change = Instant::now();
@@ -127,10 +130,13 @@ where
         /* Sleep for a second to avoid maxing out CPU */
         thread::sleep(LOOP_SLEEP_DURATION);
     }
-    texture.with_lock(
-        None,
-        rendering::image_to_texture(&next_photo_thread.join().unwrap()?, bpp),
-    )?;
+    texture
+        .update(
+            None,
+            next_photo_thread.join().unwrap()?.as_bytes(),
+            w as usize * bpp,
+        )
+        .map_err_to_string()?;
     Transition::In.play(canvas, texture, &sdl)?;
     Ok(false)
 }
