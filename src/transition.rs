@@ -1,11 +1,8 @@
 use std::time::Instant;
 
-use sdl2::{
-    pixels::Color,
-    render::{Canvas, Texture},
-    video::Window,
-    Sdl,
-};
+use sdl2::pixels::Color;
+
+use crate::sdl;
 
 #[derive(Debug)]
 pub enum Transition {
@@ -19,26 +16,20 @@ const TRANSITION_ALPHA_MIN: f64 = 0f64;
 const TRANSITION_ALPHA_MAX: f64 = 255f64;
 
 impl Transition {
-    pub fn play(
-        &self,
-        canvas: &mut Canvas<Window>,
-        texture: &Texture,
-        sdl: &Sdl,
-    ) -> Result<(), String> {
+    pub fn play(&self, sdl: &mut impl sdl::Sdl) -> Result<(), String> {
         let mut delta;
         let mut alpha = self.init_alpha();
         let mut last = Instant::now();
         while !self.is_finished(alpha) {
             delta = (Instant::now() - last).as_secs_f64();
             last = Instant::now();
-            if super::is_exit_requested(sdl)? {
+            if super::is_exit_requested(sdl) {
                 break;
             }
             alpha += self.step_alpha(delta);
-            canvas.copy(&texture, None, None)?;
-            canvas.set_draw_color(Color::RGBA(0, 0, 0, f64::round(alpha) as u8));
-            canvas.fill_rect(None)?;
-            canvas.present();
+            sdl.copy_texture_to_canvas()?;
+            sdl.fill_canvas(Color::RGBA(0, 0, 0, f64::round(alpha) as u8))?;
+            sdl.present_canvas();
         }
         Ok(())
     }

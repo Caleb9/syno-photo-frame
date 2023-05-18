@@ -30,7 +30,7 @@ pub trait Response {
     fn bytes(self) -> Result<Bytes, String>;
 }
 
-/// Production implementation of `Reqwest`
+/// Production implementation of `Client`
 #[derive(Clone, Debug)]
 pub struct ReqwestClient {
     client: reqwest::blocking::Client,
