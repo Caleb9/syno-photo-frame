@@ -4,6 +4,20 @@ use serde::de::DeserializeOwned;
 
 use crate::ErrorToString;
 
+/// Isolates reqwest's Client for testing
+pub trait Client: Clone + Send + 'static {
+    type Response: Response;
+
+    fn post(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+        header: Option<(&str, &str)>,
+    ) -> Result<Self::Response, String>;
+
+    fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<Self::Response, String>;
+}
+
 /// Isolates reqwest's Response for testing
 #[cfg_attr(test, mockall::automock)]
 pub trait Response {
@@ -16,53 +30,21 @@ pub trait Response {
     fn bytes(self) -> Result<Bytes, String>;
 }
 
-/// Isolates reqwest's Client for testing
-pub trait Client<R>: Clone + Send + 'static {
-    fn post<'a>(
-        &self,
-        url: &str,
-        form: &[(&'a str, &'a str)],
-        header: Option<(&str, &str)>,
-    ) -> Result<R, String>;
-
-    fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<R, String>;
-}
-
 /// Production implementation of `Reqwest`
 #[derive(Clone, Debug)]
 pub struct ReqwestClient {
     client: reqwest::blocking::Client,
 }
 
-impl ReqwestClient {
-    pub fn new(client: reqwest::blocking::Client) -> Self {
-        Self { client }
+impl From<reqwest::blocking::Client> for ReqwestClient {
+    fn from(value: reqwest::blocking::Client) -> Self {
+        ReqwestClient { client: value }
     }
 }
 
-#[derive(Debug)]
-pub struct ReqwestResponse {
-    response: reqwest::blocking::Response,
-}
+impl Client for ReqwestClient {
+    type Response = ReqwestResponse;
 
-impl Response for ReqwestResponse {
-    fn status(&self) -> StatusCode {
-        self.response.status()
-    }
-
-    fn json<T>(self) -> Result<T, String>
-    where
-        T: DeserializeOwned,
-    {
-        self.response.json().map_err_to_string()
-    }
-
-    fn bytes(self) -> Result<Bytes, String> {
-        self.response.bytes().map_err_to_string()
-    }
-}
-
-impl Client<ReqwestResponse> for ReqwestClient {
     fn post(
         &self,
         url: &str,
@@ -85,5 +67,27 @@ impl Client<ReqwestResponse> for ReqwestClient {
             .send()
             .map_err_to_string()?;
         Ok(ReqwestResponse { response })
+    }
+}
+
+#[derive(Debug)]
+pub struct ReqwestResponse {
+    response: reqwest::blocking::Response,
+}
+
+impl Response for ReqwestResponse {
+    fn status(&self) -> StatusCode {
+        self.response.status()
+    }
+
+    fn json<T>(self) -> Result<T, String>
+    where
+        T: DeserializeOwned,
+    {
+        self.response.json().map_err_to_string()
+    }
+
+    fn bytes(self) -> Result<Bytes, String> {
+        self.response.bytes().map_err_to_string()
     }
 }

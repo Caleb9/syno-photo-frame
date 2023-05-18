@@ -5,7 +5,7 @@ use reqwest::{cookie::CookieStore, StatusCode, Url};
 
 use crate::{
     api::{self, dto::Photo, PhotosApiError, SharingId},
-    http::{Client, Response},
+    http::Client,
     ErrorToString,
 };
 
@@ -38,14 +38,10 @@ impl TryFrom<&Url> for Slideshow {
 }
 
 impl Slideshow {
-    pub fn get_next_photo<C, R>(
+    pub fn get_next_photo<C: Client>(
         &mut self,
         (client, cookie_store): (&C, &Arc<dyn CookieStore>),
-    ) -> Result<Bytes, String>
-    where
-        C: Client<R>,
-        R: Response,
-    {
+    ) -> Result<Bytes, String> {
         if let None = cookie_store.cookies(&self.api_url) {
             api::login(
                 &|url, form, header| client.post(url, form, header),
@@ -126,7 +122,9 @@ mod tests {
     mock! {
         Client {}
 
-        impl Client<MockResponse> for Client {
+        impl Client for Client {
+            type Response = MockResponse;
+
             fn post<'a>(
                 &self,
                 url: &str,

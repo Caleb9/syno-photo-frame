@@ -6,7 +6,7 @@ use std::{
 };
 
 use cli::Cli;
-use http::{Client, Response};
+use http::Client;
 use slideshow::Slideshow;
 use transition::Transition;
 
@@ -29,11 +29,7 @@ mod transition;
 
 const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
 
-pub fn run<C, R>(cli: &Cli, http: (&C, &Arc<dyn CookieStore>)) -> Result<(), String>
-where
-    C: Client<R>,
-    R: Response,
-{
+pub fn run<C: Client>(cli: &Cli, http: (&C, &Arc<dyn CookieStore>)) -> Result<(), String> {
     let video_subsystem = rendering::init_video()?;
     let (w, h, bpp) = rendering::dimensions(&video_subsystem)?;
     // let (w, h) = (w / 4, h / 4);
@@ -87,15 +83,11 @@ where
     Ok(())
 }
 
-fn get_next_photo_thread<C, R>(
+fn get_next_photo_thread<C: Client>(
     slideshow: &Arc<Mutex<Slideshow>>,
     (client, cookie_store): (&C, &Arc<dyn CookieStore>),
     dimensions: (u32, u32),
-) -> JoinHandle<Result<DynamicImage, String>>
-where
-    C: Client<R>,
-    R: Response,
-{
+) -> JoinHandle<Result<DynamicImage, String>> {
     let (client, slideshow, cookie_store) =
         (client.clone(), slideshow.clone(), cookie_store.clone());
     thread::spawn(move || {
@@ -109,18 +101,14 @@ where
     })
 }
 
-fn start_slideshow<C, R>(
+fn start_slideshow<C: Client>(
     slideshow: &Arc<Mutex<Slideshow>>,
     http: (&C, &Arc<dyn CookieStore>),
     (w, h, bpp): (u32, u32, usize),
     video_subsystem: &VideoSubsystem,
     texture: &mut Texture,
     canvas: &mut Canvas<Window>,
-) -> Result<bool, String>
-where
-    C: Client<R>,
-    R: Response,
-{
+) -> Result<bool, String> {
     let next_photo_thread = get_next_photo_thread(&slideshow, http, (w, h));
     let sdl = video_subsystem.sdl();
     while !next_photo_thread.is_finished() {
