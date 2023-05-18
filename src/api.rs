@@ -210,31 +210,24 @@ mod tests {
 
     #[test]
     fn parse_share_link_is_ok_for_valid_link() {
-        let link = Url::parse("https://test.dsm.addr:5001/aa/sharing/FakeSharingId").unwrap();
-
-        let result = parse_share_link(&link);
-
-        assert!(result.is_ok());
-        let (api_url, sharing_id) = result.unwrap();
-        assert_eq!(
-            api_url.as_str(),
-            "https://test.dsm.addr:5001/aa/sharing/webapi/entry.cgi"
+        test_case(
+            "https://test.dsm.addr:5001/aa/sharing/FakeSharingId",
+            "https://test.dsm.addr:5001/aa/sharing/webapi/entry.cgi",
         );
-        assert_eq!(sharing_id.0, "FakeSharingId");
-    }
-
-    #[test]
-    fn parse_share_link_is_ok_for_valid_link2() {
-        let link = Url::parse("https://test.dsm.addr/photo/aa/sharing/FakeSharingId").unwrap();
-
-        let result = parse_share_link(&link);
-
-        assert!(result.is_ok());
-        let (api_url, sharing_id) = result.unwrap();
-        assert_eq!(
-            api_url.as_str(),
-            "https://test.dsm.addr/photo/aa/sharing/webapi/entry.cgi"
+        test_case(
+            "https://test.dsm.addr/photo/aa/sharing/FakeSharingId",
+            "https://test.dsm.addr/photo/aa/sharing/webapi/entry.cgi",
         );
-        assert_eq!(sharing_id.0, "FakeSharingId");
+
+        fn test_case(share_link: &str, expected_api_url: &str) {
+            let link = Url::parse(share_link).unwrap();
+
+            let result = parse_share_link(&link);
+
+            assert!(result.is_ok());
+            let (api_url, sharing_id) = result.unwrap();
+            assert_eq!(api_url.as_str(), expected_api_url);
+            assert_eq!(sharing_id.0, "FakeSharingId");
+        }
     }
 }

@@ -15,11 +15,12 @@ use image::DynamicImage;
 use reqwest::cookie::CookieStore;
 use sdl2::event::Event;
 
-mod api;
 pub mod cli;
 pub mod http;
-mod img;
 pub mod sdl;
+
+mod api;
+mod img;
 mod slideshow;
 mod transition;
 

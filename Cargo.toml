@@ -29,4 +29,5 @@ sdl2 = { version="0.35.*", features = ["use-pkgconfig", "static-link"] }
 pre-build = ["dpkg --add-architecture arm64 && apt-get update && apt-get install --assume-yes libsdl2-dev:arm64 libdrm-dev:arm64 libgbm-dev:arm64"]
 
 [dev-dependencies]
+mock_instant = "0.3.*"
 mockall = "0.11.*"
