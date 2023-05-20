@@ -1,5 +1,6 @@
-use clap::Parser;
-use reqwest::Url;
+pub use clap::Parser;
+
+use crate::http::Url;
 
 #[derive(Debug, Parser)]
 pub struct Cli {

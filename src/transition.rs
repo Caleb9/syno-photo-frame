@@ -4,23 +4,21 @@ use mock_instant::Instant;
 #[cfg(not(test))]
 use std::time::Instant;
 
-use sdl2::pixels::Color;
-
-use crate::sdl;
+use crate::sdl::{Color, Sdl};
 
 #[derive(Debug)]
-pub enum Transition {
+pub(crate) enum Transition {
     In,
     Out,
 }
 
 /// Possibly parametrize this and take command line argument to control length of the transition
-const TRANSITION_DURATION_SECS: f64 = 2f64;
-const TRANSITION_ALPHA_MIN: f64 = 0f64;
-const TRANSITION_ALPHA_MAX: f64 = 255f64;
+const TRANSITION_DURATION_SECS: f64 = 2_f64;
+const TRANSITION_ALPHA_MIN: f64 = 0_f64;
+const TRANSITION_ALPHA_MAX: f64 = 255_f64;
 
 impl Transition {
-    pub fn play(&self, sdl: &mut impl sdl::Sdl) -> Result<(), String> {
+    pub(crate) fn play(&self, sdl: &mut impl Sdl) -> Result<(), String> {
         let mut delta;
         let mut alpha = self.init_alpha();
         let mut last = Instant::now();
@@ -68,9 +66,8 @@ mod tests {
 
     use mock_instant::MockClock;
     use mockall::Sequence;
-    use sdl2::event::Event;
 
-    use crate::sdl::MockSdl;
+    use crate::sdl::{Event, MockSdl};
 
     use super::*;
 
@@ -87,8 +84,8 @@ mod tests {
                 .times(EXPECTED_ITERATIONS)
                 .returning(|| Box::new([].into_iter()));
             let mut canvas_seq = Sequence::default();
-            const FPS: f64 = 30f64;
-            let frame_duration = Duration::from_secs_f64(1f64 / FPS);
+            const FPS: f64 = 30_f64;
+            let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
             for _ in 0..EXPECTED_ITERATIONS {
                 sdl.expect_copy_texture_to_canvas()
                     .once()
@@ -148,8 +145,8 @@ mod tests {
             let mut sdl = MockSdl::default();
             sdl.expect_events().returning(|| Box::new([].into_iter()));
             sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
-            const FPS: f64 = 30f64;
-            let frame_duration = Duration::from_secs_f64(1f64 / FPS);
+            const FPS: f64 = 30_f64;
+            let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
             for alpha in alpha_prefix {
                 /* Check alpha value for first 3 calls to fill_canvas. */
                 sdl.expect_fill_canvas()
@@ -192,8 +189,8 @@ mod tests {
             sdl.expect_events()
                 .return_once(|| Box::new([Event::Quit { timestamp: 0 }].into_iter()));
             sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
-            const FPS: f64 = 30f64;
-            let frame_duration = Duration::from_secs_f64(1f64 / FPS);
+            const FPS: f64 = 30_f64;
+            let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
             sdl.expect_fill_canvas().return_const(Ok(()));
             sdl.expect_present_canvas()
                 .returning(move || MockClock::advance(frame_duration));

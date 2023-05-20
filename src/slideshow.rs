@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use reqwest::{cookie::CookieStore, StatusCode, Url};
 
 use crate::{
     api::{self, dto::Photo, PhotosApiError, SharingId},
-    http::Client,
+    http::{Client, CookieStore, StatusCode, Url},
     ErrorToString,
 };
 
@@ -13,7 +12,7 @@ static BATCH_SIZE: u32 = 10;
 
 /// Holds the slideshow state: batch of metadata to identify photos in the API and currently displayed photo index.
 #[derive(Debug)]
-pub struct Slideshow {
+pub(crate) struct Slideshow {
     api_url: Url,
     sharing_id: SharingId,
     next_batch_offset: u32,
@@ -38,7 +37,7 @@ impl TryFrom<&Url> for Slideshow {
 }
 
 impl Slideshow {
-    pub fn get_next_photo<C: Client>(
+    pub(crate) fn get_next_photo<C: Client>(
         &mut self,
         (client, cookie_store): (&C, &Arc<dyn CookieStore>),
     ) -> Result<Bytes, String> {
@@ -112,32 +111,9 @@ mod tests {
     use super::*;
     use crate::{
         api::dto,
-        http::{Client, MockResponse},
+        http::{Jar, MockResponse},
+        test_helpers::{self, MockClient},
     };
-
-    use mockall::*;
-    use reqwest::cookie::Jar;
-    use serde::de::DeserializeOwned;
-
-    mock! {
-        Client {}
-
-        impl Client for Client {
-            type Response = MockResponse;
-
-            fn post<'a>(
-                &self,
-                url: &str,
-                form: &[(&'a str, &'a str)],
-                header: Option<(&'a str, &'a str)>,
-            ) -> Result<MockResponse, String>;
-            fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<MockResponse, String>;
-        }
-
-        impl Clone for Client {
-            fn clone(&self) -> Self;
-        }
-    }
 
     #[test]
     fn get_next_photo_starts_by_sending_login_request_and_fetches_album_contents_and_first_photo() {
@@ -149,18 +125,18 @@ mod tests {
             .expect_post()
             .withf(|url, _, _| url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi")
             .withf(|_, form, _| is_login_form(&form, "FakeSharingId"))
-            .return_once(|_, _, _| Ok(new_response_with_json(dto::Login {})));
+            .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
         client_stub
             .expect_post()
             .withf(|url, _, _| url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi")
             .withf(|_, form, _| is_list_form(&form, "0", "10"))
             .withf(|_, _, header| *header == Some(("X-SYNO-SHARING", "FakeSharingId")))
             .return_once(|_, _, _| {
-                Ok(new_response_with_json(dto::List {
+                Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![
-                        new_photo_dto(1, "photo1"),
-                        new_photo_dto(2, "photo2"),
-                        new_photo_dto(3, "photo3"),
+                        test_helpers::new_photo_dto(1, "photo1"),
+                        test_helpers::new_photo_dto(2, "photo2"),
+                        test_helpers::new_photo_dto(3, "photo3"),
                     ],
                 }))
             });
@@ -169,7 +145,7 @@ mod tests {
             .withf(|url, _| url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi")
             .withf(|_, query| is_get_photo_query(&query, "1", "FakeSharingId", "photo1"))
             .return_once(|_, _| {
-                let mut get_photo_response = new_success_response();
+                let mut get_photo_response = test_helpers::new_success_response();
                 get_photo_response
                     .expect_bytes()
                     .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
@@ -196,9 +172,9 @@ mod tests {
         slideshow.next_batch_offset = 10;
         slideshow.photo_index = 1;
         slideshow.photos_batch = vec![
-            new_photo_dto(1, "photo1"),
-            new_photo_dto(2, "photo2"),
-            new_photo_dto(3, "photo3"),
+            test_helpers::new_photo_dto(1, "photo1"),
+            test_helpers::new_photo_dto(2, "photo2"),
+            test_helpers::new_photo_dto(3, "photo3"),
         ];
         let mut client_stub = MockClient::new();
         client_stub
@@ -206,14 +182,15 @@ mod tests {
             .withf(|url, _| url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi")
             .withf(|_, query| is_get_photo_query(&query, "2", "FakeSharingId", "photo2"))
             .return_once(|_, _| {
-                let mut get_photo_response = new_success_response();
+                let mut get_photo_response = test_helpers::new_success_response();
                 get_photo_response
                     .expect_bytes()
                     .return_once(|| Ok(Bytes::from_static(&[])));
                 Ok(get_photo_response)
             });
-        let cookie_store =
-            new_cookie_store(Some("http://fake.dsm.addr/aa/sharing/webapi/entry.cgi"));
+        let cookie_store = test_helpers::new_cookie_store(Some(
+            "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi",
+        ));
 
         /* Act */
         let result = slideshow.get_next_photo((&client_stub, &cookie_store));
@@ -231,9 +208,9 @@ mod tests {
         slideshow.next_batch_offset = 10;
         slideshow.photo_index = 3;
         slideshow.photos_batch = vec![
-            new_photo_dto(1, "photo1"),
-            new_photo_dto(2, "photo2"),
-            new_photo_dto(3, "photo3"),
+            test_helpers::new_photo_dto(1, "photo1"),
+            test_helpers::new_photo_dto(2, "photo2"),
+            test_helpers::new_photo_dto(3, "photo3"),
         ];
         let mut client_stub = MockClient::new();
         client_stub
@@ -242,11 +219,11 @@ mod tests {
             .withf(|_, form, _| is_list_form(&form, "0", "10"))
             .withf(|_, _, header| *header == Some(("X-SYNO-SHARING", "FakeSharingId")))
             .return_once(|_, _, _| {
-                Ok(new_response_with_json(dto::List {
+                Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![
-                        new_photo_dto(1, "photo1"),
-                        new_photo_dto(2, "photo2"),
-                        new_photo_dto(3, "photo3"),
+                        test_helpers::new_photo_dto(1, "photo1"),
+                        test_helpers::new_photo_dto(2, "photo2"),
+                        test_helpers::new_photo_dto(3, "photo3"),
                     ],
                 }))
             });
@@ -255,14 +232,15 @@ mod tests {
             .withf(|url, _| url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi")
             .withf(|_, query| is_get_photo_query(&query, "1", "FakeSharingId", "photo1"))
             .return_once(|_, _| {
-                let mut get_photo_response = new_success_response();
+                let mut get_photo_response = test_helpers::new_success_response();
                 get_photo_response
                     .expect_bytes()
                     .return_once(|| Ok(Bytes::from_static(&[])));
                 Ok(get_photo_response)
             });
-        let cookie_store =
-            new_cookie_store(Some("http://fake.dsm.addr/aa/sharing/webapi/entry.cgi"));
+        let cookie_store = test_helpers::new_cookie_store(Some(
+            "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi",
+        ));
 
         /* Act */
         let result = slideshow.get_next_photo((&client_stub, &cookie_store));
@@ -281,9 +259,9 @@ mod tests {
         slideshow.next_batch_offset = 10;
         slideshow.photo_index = 1;
         slideshow.photos_batch = vec![
-            new_photo_dto(1, "photo1"),
-            new_photo_dto(2, "photo2"),
-            new_photo_dto(3, "photo3"),
+            test_helpers::new_photo_dto(1, "photo1"),
+            test_helpers::new_photo_dto(2, "photo2"),
+            test_helpers::new_photo_dto(3, "photo3"),
         ];
         let mut client_stub = MockClient::new();
         client_stub
@@ -302,14 +280,15 @@ mod tests {
             .withf(|url, _| url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi")
             .withf(|_, query| is_get_photo_query(&query, "3", "FakeSharingId", "photo3"))
             .return_once(|_, _| {
-                let mut get_photo_response = new_success_response();
+                let mut get_photo_response = test_helpers::new_success_response();
                 get_photo_response
                     .expect_bytes()
                     .return_once(|| Ok(Bytes::from_static(&[])));
                 Ok(get_photo_response)
             });
-        let cookie_store =
-            new_cookie_store(Some("http://fake.dsm.addr/aa/sharing/webapi/entry.cgi"));
+        let cookie_store = test_helpers::new_cookie_store(Some(
+            "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi",
+        ));
 
         /* Act */
         let result = slideshow.get_next_photo((&client_stub, &cookie_store));
@@ -317,37 +296,6 @@ mod tests {
         /* Assert */
         assert_eq!(slideshow.photo_index, 3);
         assert!(result.is_ok());
-    }
-
-    fn new_success_response() -> MockResponse {
-        let mut response = MockResponse::new();
-        response.expect_status().returning(|| StatusCode::OK);
-        response
-    }
-
-    fn new_response_with_json<T: DeserializeOwned + Send + 'static>(data: T) -> MockResponse {
-        let mut response = new_success_response();
-        response
-            .expect_json::<dto::ApiResponse<T>>()
-            .return_once(|| {
-                Ok(dto::ApiResponse {
-                    success: true,
-                    error: None,
-                    data: Some(data),
-                })
-            });
-        response
-    }
-
-    fn new_photo_dto(id: i32, cache_key: &str) -> dto::Photo {
-        dto::Photo {
-            id,
-            additional: dto::Additional {
-                thumbnail: dto::Thumbnail {
-                    cache_key: cache_key.to_string(),
-                },
-            },
-        }
     }
 
     fn is_login_form(form: &[(&str, &str)], sharing_id: &str) -> bool {
@@ -388,14 +336,5 @@ mod tests {
             ("type", "unit"),
             ("size", "xl"),
         ])
-    }
-
-    /// When `is_logged_in_to_url` is set to Some value, cookie store will simulate logged in state
-    fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> Arc<dyn CookieStore> {
-        let cookie_store = Arc::new(Jar::default());
-        if let Some(url) = is_logged_in_to_url {
-            cookie_store.add_cookie_str("sharing_id=FakeSharingId", &Url::parse(url).unwrap());
-        }
-        cookie_store as Arc<dyn CookieStore>
     }
 }

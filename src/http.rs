@@ -1,5 +1,10 @@
-pub use bytes::Bytes;
-pub use reqwest::StatusCode;
+pub(crate) use bytes::Bytes;
+pub use reqwest::{blocking::ClientBuilder, cookie::CookieStore};
+pub(crate) use reqwest::{StatusCode, Url};
+
+#[cfg(test)]
+pub(crate) use reqwest::cookie::Jar;
+
 use serde::de::DeserializeOwned;
 
 use crate::ErrorToString;

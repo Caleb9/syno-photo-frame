@@ -1,12 +1,9 @@
-use std::{error::Error, process, sync::Arc};
-
-use clap::Parser;
-use reqwest::{blocking::ClientBuilder, cookie::CookieStore};
+use std::{error::Error, process, sync::Arc, thread};
 
 use syno_photo_frame::{
     self,
-    cli::Cli,
-    http::ReqwestClient,
+    cli::{Cli, Parser},
+    http::{ClientBuilder, CookieStore, ReqwestClient},
     sdl::{self, SdlWrapper},
 };
 
@@ -36,6 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             &(cookie_store as Arc<dyn CookieStore>),
         ),
         &mut sdl,
+        |duration| thread::sleep(duration),
     )?;
 
     Ok(())

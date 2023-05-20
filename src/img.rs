@@ -1,23 +1,34 @@
+pub(crate) use image::DynamicImage;
+
 use image::{
     self,
     imageops::{self, FilterType},
-    DynamicImage, GenericImageView,
+    GenericImageView,
 };
 
-/// Prepares a photo for display by resizing and centering the original image, and filling any empty space with blurred
-/// background.
-pub fn fit_to_screen_and_add_background(
-    original: &DynamicImage,
-    screen_dimensions: (u32, u32),
-) -> DynamicImage {
-    internal_fit_to_screen_and_add_background(
-        original,
-        screen_dimensions,
-        brighten_and_blur_background,
-    )
+use crate::ErrorToString;
+
+pub(crate) trait Framed {
+    fn fit_to_screen_and_add_background(&self, screen_dimensions: (u32, u32)) -> DynamicImage;
 }
 
-/// Testable version of [fit_to_screen_and_add_background]
+impl Framed for DynamicImage {
+    /// Prepares a photo for display by resizing and centering the original image, and filling any empty space with
+    /// blurred background.
+    fn fit_to_screen_and_add_background(&self, screen_dimensions: (u32, u32)) -> DynamicImage {
+        internal_fit_to_screen_and_add_background(
+            self,
+            screen_dimensions,
+            brighten_and_blur_background,
+        )
+    }
+}
+
+pub(crate) fn load_from_memory(buffer: &[u8]) -> Result<DynamicImage, String> {
+    image::load_from_memory(buffer).map_err_to_string()
+}
+
+/// Testable version of [Framed::fit_to_screen_and_add_background]
 fn internal_fit_to_screen_and_add_background(
     original: &DynamicImage,
     (xres, yres): (u32, u32),
@@ -77,7 +88,7 @@ fn create_background(
 
 fn brighten_and_blur_background(background: &DynamicImage) -> DynamicImage {
     const BRIGHTNESS_OFFSET: i32 = -30;
-    const BLUR_SIGMA: f32 = 50f32;
+    const BLUR_SIGMA: f32 = 50.0;
     background.brighten(BRIGHTNESS_OFFSET).blur(BLUR_SIGMA)
 }
 
@@ -143,8 +154,7 @@ impl Dimensions {
         } = screen_to_image_projection;
 
         if w_diff > 0.0 {
-            /* Needs background on left and right.
-             * The +1.0 is a one pixel overlap to workaround rounding errors */
+            /* Needs background on left and right. */
             let bg_w = w_diff / 2.0;
             (
                 Coords {

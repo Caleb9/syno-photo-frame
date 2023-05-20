@@ -6,14 +6,11 @@ use std::{
 };
 
 use cli::Cli;
-use http::Client;
-use sdl::Sdl;
+use http::{Client, CookieStore};
+use img::{DynamicImage, Framed};
+use sdl::{Event, Sdl};
 use slideshow::Slideshow;
 use transition::Transition;
-
-use image::DynamicImage;
-use reqwest::cookie::CookieStore;
-use sdl2::event::Event;
 
 pub mod cli;
 pub mod http;
@@ -24,10 +21,14 @@ mod img;
 mod slideshow;
 mod transition;
 
+#[cfg(test)]
+mod test_helpers;
+
 pub fn run<C: Client, S: Sdl>(
     cli: &Cli,
     http: (&C, &Arc<dyn CookieStore>),
     sdl: &mut S,
+    sleep: fn(Duration),
 ) -> Result<(), String> {
     let slideshow = Arc::new(Mutex::new(Slideshow::try_from(&cli.share_link)?));
 
@@ -41,13 +42,13 @@ pub fn run<C: Client, S: Sdl>(
         }
         /* Avoid maxing out CPU */
         const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
-        thread::sleep(LOOP_SLEEP_DURATION);
+        sleep(LOOP_SLEEP_DURATION);
     }
     sdl.update_texture(first_photo_thread.join().unwrap()?.as_bytes())?;
     Transition::In.play(sdl)?;
 
     /* Continue indefinitely */
-    slideshow_loop(http, sdl, &slideshow, photo_change_interval)
+    slideshow_loop(http, sdl, &slideshow, photo_change_interval, sleep)
 }
 
 fn get_next_photo_thread<C: Client>(
@@ -57,15 +58,17 @@ fn get_next_photo_thread<C: Client>(
 ) -> JoinHandle<Result<DynamicImage, String>> {
     let (client, slideshow, cookie_store) =
         (client.clone(), slideshow.clone(), cookie_store.clone());
-    thread::spawn(move || {
+
+    let get_next_photo = move || {
         let bytes = slideshow
             .lock()
             .map_err_to_string()?
             .get_next_photo((&client, &cookie_store))?;
-        let original = image::load_from_memory(&bytes).map_err_to_string()?;
-        let final_image = img::fit_to_screen_and_add_background(&original, dimensions);
-        Ok(final_image)
-    })
+        let photo = img::load_from_memory(&bytes)?.fit_to_screen_and_add_background(dimensions);
+        Ok(photo)
+    };
+
+    thread::spawn(get_next_photo)
 }
 
 fn is_exit_requested<S: Sdl>(sdl: &mut S) -> bool {
@@ -83,6 +86,7 @@ fn slideshow_loop<C: Client, S: Sdl>(
     sdl: &mut S,
     slideshow: &Arc<Mutex<Slideshow>>,
     photo_change_interval: Duration,
+    sleep: fn(Duration),
 ) -> Result<(), String> {
     let mut last_change = Instant::now();
     let mut next_photo_thread = get_next_photo_thread(slideshow, http, sdl.size());
@@ -102,13 +106,13 @@ fn slideshow_loop<C: Client, S: Sdl>(
         } else {
             /* Avoid maxing out CPU */
             const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
-            thread::sleep(LOOP_SLEEP_DURATION);
+            sleep(LOOP_SLEEP_DURATION);
         }
     }
     Ok(())
 }
 
-pub trait ErrorToString<T> {
+pub(crate) trait ErrorToString<T> {
     fn map_err_to_string(self) -> Result<T, String>;
 }
 

@@ -1,15 +1,17 @@
+pub(crate) use sdl2::{event::Event, pixels::Color};
+
 use sdl2::{
-    event::Event,
-    pixels::{Color, PixelFormatEnum},
+    pixels::PixelFormatEnum,
     render::{Canvas, Texture, TextureCreator},
     video::{DisplayMode, Window, WindowContext},
     EventPump, VideoSubsystem,
 };
 
-use super::ErrorToString;
+use crate::ErrorToString;
 
 #[cfg_attr(test, mockall::automock)]
 pub trait Sdl {
+    /// Gets screen size
     fn size(&self) -> (u32, u32);
     fn update_texture(&mut self, pixel_data: &[u8]) -> Result<(), String>;
     fn copy_texture_to_canvas(&mut self) -> Result<(), String>;

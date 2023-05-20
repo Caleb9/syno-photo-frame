@@ -3,26 +3,27 @@ use std::{error::Error, fmt::Display};
 use bytes::Bytes;
 use lazy_static::lazy_static;
 use regex::Regex;
-use reqwest::{self, StatusCode, Url};
 
+use crate::{
+    http::{Response, StatusCode, Url},
+    ErrorToString,
+};
+
+use dto::Photo;
 use PhotosApiError::{InvalidApiResponse, InvalidHttpResponse};
 
-use super::{http::Response, ErrorToString};
-
-use self::dto::Photo;
-
 #[derive(Debug)]
-pub enum PhotosApiError {
+pub(crate) enum PhotosApiError {
     Reqwest(String),
     InvalidHttpResponse(StatusCode),
     InvalidApiResponse(&'static str, i32),
 }
 
 #[derive(Debug)]
-pub struct SharingId(String);
+pub(crate) struct SharingId(String);
 
 /// Returns Synology Photos API URL and sharing id extracted from album share link
-pub fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
+pub(crate) fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
     lazy_static! {
         static ref RE: Regex = Regex::new(r"^(https?://.+)/([^/]+)/?$").unwrap();
     }
@@ -35,7 +36,11 @@ pub fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
     }
 }
 
-pub fn login<F, R>(post: &F, api_url: &Url, sharing_id: &SharingId) -> Result<(), PhotosApiError>
+pub(crate) fn login<F, R>(
+    post: &F,
+    api_url: &Url,
+    sharing_id: &SharingId,
+) -> Result<(), PhotosApiError>
 where
     F: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
     R: Response,
@@ -57,7 +62,7 @@ where
     })
 }
 
-pub fn get_album_contents<F, R>(
+pub(crate) fn get_album_contents<F, R>(
     post: &F,
     api_url: &Url,
     sharing_id: &SharingId,
@@ -96,7 +101,7 @@ where
     })
 }
 
-pub fn get_photo<F, R>(
+pub(crate) fn get_photo<F, R>(
     get: &F,
     api_url: &Url,
     sharing_id: &SharingId,
@@ -164,7 +169,7 @@ impl Display for SharingId {
     }
 }
 
-pub mod dto {
+pub(crate) mod dto {
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize)]
