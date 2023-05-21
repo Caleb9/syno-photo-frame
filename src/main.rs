@@ -1,5 +1,7 @@
 use std::{error::Error, process, sync::Arc, thread};
 
+use rand::{self, Rng};
+
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
@@ -34,6 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         &mut sdl,
         |duration| thread::sleep(duration),
+        |range| rand::thread_rng().gen_range(range),
     )?;
 
     Ok(())

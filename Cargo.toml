@@ -11,6 +11,7 @@ clap = { version = "4.*", features = ["derive", "wrap_help"] }
 ctrlc = { version = "3.*", features = ["termination"] }
 image = { version = "0.24.*", default-features = false, features = ["jpeg"] }
 lazy_static = "1.*"
+rand = "0.8.*"
 regex = "1.*"
 reqwest = { version = "0.11.*", features = ["blocking", "cookies", "json"] }
 sdl2 = "0.35.*"

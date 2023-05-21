@@ -9,7 +9,6 @@ use crate::{
     ErrorToString,
 };
 
-use dto::Photo;
 use PhotosApiError::{InvalidApiResponse, InvalidHttpResponse};
 
 #[derive(Debug)]
@@ -36,13 +35,13 @@ pub(crate) fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), Str
     }
 }
 
-pub(crate) fn login<F, R>(
-    post: &F,
+pub(crate) fn login<P, R>(
+    post: &P,
     api_url: &Url,
     sharing_id: &SharingId,
 ) -> Result<(), PhotosApiError>
 where
-    F: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
+    P: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
     R: Response,
 {
     let params = [
@@ -62,15 +61,47 @@ where
     })
 }
 
-pub(crate) fn get_album_contents<F, R>(
-    post: &F,
+pub(crate) fn get_album_contents_count<P, R>(
+    post: &P,
+    api_url: &Url,
+    sharing_id: &SharingId,
+) -> Result<Vec<dto::Album>, PhotosApiError>
+where
+    P: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
+    R: Response,
+{
+    let params = [
+        ("api", "SYNO.Foto.Browse.Album"),
+        ("method", "get"),
+        ("version", "1"),
+    ];
+    let response = post(
+        api_url.as_str(),
+        &params,
+        Some(("X-SYNO-SHARING", &sharing_id.0)),
+    )?;
+    read_response(response, |response| {
+        let dto = response.json::<dto::ApiResponse<dto::List<dto::Album>>>()?;
+        if !dto.success {
+            Err(InvalidApiResponse("get", dto.error.unwrap().code))
+        } else {
+            Ok(dto
+                .data
+                .expect("data field should be populated for successful response")
+                .list)
+        }
+    })
+}
+
+pub(crate) fn get_album_contents<P, R>(
+    post: &P,
     api_url: &Url,
     sharing_id: &SharingId,
     offset: u32,
     limit: u32,
-) -> Result<Vec<Photo>, PhotosApiError>
+) -> Result<Vec<dto::Photo>, PhotosApiError>
 where
-    F: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
+    P: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
     R: Response,
 {
     let params = [
@@ -101,14 +132,14 @@ where
     })
 }
 
-pub(crate) fn get_photo<F, R>(
-    get: &F,
+pub(crate) fn get_photo<G, R>(
+    get: &G,
     api_url: &Url,
     sharing_id: &SharingId,
     photo_dto: &dto::Photo,
 ) -> Result<Bytes, PhotosApiError>
 where
-    F: Fn(&str, &[(&str, &str)]) -> Result<R, String>,
+    G: Fn(&str, &[(&str, &str)]) -> Result<R, String>,
     R: Response,
 {
     let params = [
@@ -128,9 +159,9 @@ where
     })
 }
 
-fn read_response<F, R, T>(response: R, on_success: F) -> Result<T, PhotosApiError>
+fn read_response<S, R, T>(response: R, on_success: S) -> Result<T, PhotosApiError>
 where
-    F: FnOnce(R) -> Result<T, PhotosApiError>,
+    S: FnOnce(R) -> Result<T, PhotosApiError>,
     R: Response,
 {
     let status = response.status();
@@ -143,7 +174,7 @@ where
 
 impl Display for PhotosApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {
+        match self {
             PhotosApiError::Reqwest(ref reqwest_error) => write!(f, "{reqwest_error}"),
             InvalidHttpResponse(ref status) => {
                 write!(f, "Invalid HTTP response code: {status}")
@@ -190,6 +221,11 @@ pub(crate) mod dto {
     #[derive(Debug, Deserialize)]
     pub struct List<T> {
         pub list: Vec<T>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct Album {
+        pub item_count: u32,
     }
 
     #[derive(Debug, Deserialize)]
