@@ -2,6 +2,7 @@
 name = "syno-photo-frame"
 version = "0.1.0"
 edition = "2021"
+authors = ["Piotr Karasinski"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,21 +15,33 @@ lazy_static = "1.*"
 rand = "0.8.*"
 regex = "1.*"
 reqwest = { version = "0.11.*", features = ["blocking", "cookies", "json"] }
-sdl2 = "0.35.*"
+# Latest available semver (0.35.2) does not compile with bundled and static-link features (used when compiling for 
+# aarch64-unknown-linux-gnu target). The github version does. It seems to be an error to use different versions (semver
+# and github) for different targets.
+sdl2 = { git = "https://github.com/rust-sdl2/rust-sdl2" }
 serde = { version = "1.*", features = ["derive"] }
+
+[dev-dependencies]
+mock_instant = "0.3.*"
+mockall = "0.11.*"
 
 [target.aarch64-unknown-linux-gnu.dependencies]
 # Base docker image used when cross-compiling for aarch64 is Ubuntu based, and has libssl-dev 1.0 available. Raspbian OS
 # is pure Debian based and uses libssl-dev 1.1. Enabling native-tls-vendored embeds statically linked version of the
 # library, so cross-compiled binary executes on Raspbian OS.
-reqwest = { version = "0.11.*", features = ["blocking", "cookies", "json", "native-tls-vendored"] }
-# When compiling for Raspberry Pi, try to embed sdl2 library into the binary. Currently doesn't seem to work, see
-# https://github.com/Rust-SDL2/rust-sdl2/issues/1309
-sdl2 = { version="0.35.*", features = ["use-pkgconfig", "static-link"] }
+reqwest = { version = "0.11.*", features = [
+    "blocking",
+    "cookies",
+    "json",
+    "native-tls-vendored",
+] }
+# When compiling for Raspberry Pi, embed sdl2 library into the binary.
+sdl2 = { git = "https://github.com/rust-sdl2/rust-sdl2", features = [
+    "bundled",
+    "static-link",
+] }
 
 [package.metadata.cross.target.aarch64-unknown-linux-gnu]
-pre-build = ["dpkg --add-architecture arm64 && apt-get update && apt-get install --assume-yes libsdl2-dev:arm64 libdrm-dev:arm64 libgbm-dev:arm64"]
-
-[dev-dependencies]
-mock_instant = "0.3.*"
-mockall = "0.11.*"
+pre-build = [
+    "dpkg --add-architecture arm64 && apt-get update && apt-get install --assume-yes libsdl2-dev:arm64 libgbm-dev:arm64",
+]
