@@ -1,3 +1,5 @@
+use std::thread::{self, JoinHandle};
+
 pub(crate) use image::DynamicImage;
 
 use image::{
@@ -35,22 +37,22 @@ fn internal_fit_to_screen_and_add_background(
     brighten_and_blur: fn(&DynamicImage) -> DynamicImage,
 ) -> DynamicImage {
     let original_dimensions = Dimensions::from(original.dimensions());
-    let foreground = original.resize(xres, yres, FilterType::Lanczos3);
-    let foreground_dimensions = Dimensions::from(foreground.dimensions());
     let screen_dimensions = Dimensions::from((xres, yres));
+    let foreground_dimensions = original_dimensions.resize(screen_dimensions);
+
     if foreground_dimensions.is_exact_fit_to(screen_dimensions) {
         /* image fits perfectly, background not needed */
-        return foreground;
+        return original.resize(xres, yres, FilterType::Lanczos3);
     }
 
-    let (bg_coords_1, bg_coords_2) = original_dimensions.background_crops(screen_dimensions);
+    let (bg_thread1, bg_thread2) =
+        background_fill_threads(&original, (xres, yres), brighten_and_blur);
+    let foreground = original.resize(xres, yres, FilterType::Lanczos3);
 
     let mut final_image = DynamicImage::new_rgb8(xres, yres);
-
-    let bg_fill_1 = create_background(&original, bg_coords_1, (xres, yres), brighten_and_blur);
+    let bg_fill_1 = bg_thread1.join().unwrap();
     imageops::overlay(&mut final_image, &bg_fill_1, 0, 0);
-
-    let bg_fill_2 = create_background(&original, bg_coords_2, (xres, yres), brighten_and_blur);
+    let bg_fill_2 = bg_thread2.join().unwrap();
     imageops::overlay(
         &mut final_image,
         &bg_fill_2,
@@ -69,21 +71,50 @@ fn internal_fit_to_screen_and_add_background(
     final_image
 }
 
-fn create_background(
+fn background_fill_threads(
     image: &DynamicImage,
-    Coords { x, y, w, h }: Coords,
     (xres, yres): (u32, u32),
     brighten_and_blur: fn(&DynamicImage) -> DynamicImage,
-) -> DynamicImage {
-    let bg_crop = image
-        .crop_imm(
-            x.floor() as u32,
-            y.floor() as u32,
-            w.ceil() as u32,
-            h.ceil() as u32,
-        )
-        .resize(xres, yres, FilterType::Nearest);
-    brighten_and_blur(&bg_crop)
+) -> (JoinHandle<DynamicImage>, JoinHandle<DynamicImage>) {
+    let original_dimensions = Dimensions::from(image.dimensions());
+    let screen_dimensions = Dimensions::from((xres, yres));
+    let (
+        Coords {
+            x: x1,
+            y: y1,
+            w: w1,
+            h: h1,
+        },
+        Coords {
+            x: x2,
+            y: y2,
+            w: w2,
+            h: h2,
+        },
+    ) = original_dimensions.background_crops(screen_dimensions);
+    let (bg_crop1, bg_crop2) = (
+        image.crop_imm(
+            x1.floor() as u32,
+            y1.floor() as u32,
+            w1.ceil() as u32,
+            h1.ceil() as u32,
+        ),
+        image.crop_imm(
+            x2.floor() as u32,
+            y2.floor() as u32,
+            w2.ceil() as u32,
+            h2.ceil() as u32,
+        ),
+    );
+    let bg_thread1 = thread::spawn(move || {
+        let bg = bg_crop1.resize(xres, yres, FilterType::Nearest);
+        brighten_and_blur(&bg)
+    });
+    let bg_thread2 = thread::spawn(move || {
+        let bg = bg_crop2.resize(xres, yres, FilterType::Nearest);
+        brighten_and_blur(&bg)
+    });
+    (bg_thread1, bg_thread2)
 }
 
 fn brighten_and_blur_background(background: &DynamicImage) -> DynamicImage {
