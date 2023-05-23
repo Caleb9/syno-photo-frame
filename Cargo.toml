@@ -2,7 +2,18 @@
 name = "syno-photo-frame"
 version = "0.1.0"
 edition = "2021"
+description = "Full-screen slideshow for Synology Photos albums"
+license = "GPL-3.0-or-later"
 authors = ["Piotr Karasinski"]
+readme = "README.md"
+repository = "https://github.com/Caleb9/syno-photo-frame"
+keywords = [
+    "synology",
+    "synology-photos",
+    "digital-photo-frame",
+    "slideshow",
+    "raspberry-pi",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -18,7 +29,7 @@ reqwest = { version = "0.11.*", features = ["blocking", "cookies", "json"] }
 # Latest available semver (0.35.2) does not compile with bundled and static-link features (used when compiling for 
 # aarch64-unknown-linux-gnu target). The github version does. It seems to be an error to use different versions (semver
 # and github) for different targets.
-sdl2 = { git = "https://github.com/rust-sdl2/rust-sdl2" }
+sdl2 = { git = "https://github.com/rust-sdl2/rust-sdl2", version = "0.*" }
 serde = { version = "1.*", features = ["derive"] }
 
 [dev-dependencies]
@@ -36,7 +47,7 @@ reqwest = { version = "0.11.*", features = [
     "native-tls-vendored",
 ] }
 # When compiling for Raspberry Pi, embed sdl2 library into the binary.
-sdl2 = { git = "https://github.com/rust-sdl2/rust-sdl2", features = [
+sdl2 = { git = "https://github.com/rust-sdl2/rust-sdl2", version = "0.*", features = [
     "bundled",
     "static-link",
 ] }
