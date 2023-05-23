@@ -12,8 +12,9 @@ use syno_photo_frame::{
 fn main() -> Result<(), Box<dyn Error>> {
     ctrlc::set_handler(|| process::exit(0))?;
 
-    /* HTTP client */
     let cli = Cli::parse();
+
+    /* HTTP client */
     let cookie_store = Arc::new(reqwest::cookie::Jar::default());
     let client = ClientBuilder::new()
         .cookie_provider(cookie_store.clone())
