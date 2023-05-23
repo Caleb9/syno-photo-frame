@@ -1,10 +1,16 @@
 # Syno Photo Frame
 
 [Synology
-Photos](https://www.synology.com/en-global/dsm/feature/photos) album
+Photos](https://www.synology.com/en-global/dsm/feature/photos)
 full-screen slideshow for Raspberry Pi.
 
+![](doc/syno-photo-frame.png)
+
+Features speed control, fade-transition effect and blurry background
+fill.
+
 ![](doc/Slideshow.png "Extra space gets blurry background")
+
 
 ## What?
 
