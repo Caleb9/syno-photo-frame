@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             &(cookie_store as Arc<dyn CookieStore>),
         ),
         &mut sdl,
-        |duration| thread::sleep(duration),
+        thread::sleep,
         |range| rand::thread_rng().gen_range(range),
     )?;
 

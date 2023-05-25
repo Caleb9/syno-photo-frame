@@ -46,7 +46,7 @@ fn internal_fit_to_screen_and_add_background(
     }
 
     let (bg_thread1, bg_thread2) =
-        background_fill_threads(&original, (xres, yres), brighten_and_blur);
+        background_fill_threads(original, (xres, yres), brighten_and_blur);
     let foreground = original.resize(xres, yres, FilterType::Lanczos3);
 
     let mut final_image = DynamicImage::new_rgb8(xres, yres);

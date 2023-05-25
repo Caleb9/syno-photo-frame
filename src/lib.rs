@@ -81,9 +81,8 @@ fn get_next_photo_thread<C: Client>(
 
 fn is_exit_requested<S: Sdl>(sdl: &mut S) -> bool {
     for event in sdl.events() {
-        match event {
-            Event::Quit { .. } => return true,
-            _ => { /* ignore */ }
+        if let Event::Quit { .. } = event {
+            return true;
         }
     }
     false
@@ -108,7 +107,7 @@ fn slideshow_loop<C: Client, S: Sdl>(
         if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
             Transition::Out.play(sdl)?;
             sdl.update_texture(next_photo_thread.join().unwrap()?.as_bytes())?;
-            next_photo_thread = get_next_photo_thread(&slideshow, http, sdl.size(), None);
+            next_photo_thread = get_next_photo_thread(slideshow, http, sdl.size(), None);
             Transition::In.play(sdl)?;
             last_change = Instant::now();
         } else {

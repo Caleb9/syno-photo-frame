@@ -46,7 +46,7 @@ impl Slideshow {
             client.post(url, form, header)
         };
 
-        if let None = cookie_store.cookies(&self.api_url) {
+        if cookie_store.cookies(&self.api_url).is_none() {
             api::login(&post, &self.api_url, &self.sharing_id).map_err_to_string()?;
         }
 
@@ -69,7 +69,7 @@ impl Slideshow {
             self.photo_index = 0;
         }
 
-        if self.photos_batch.len() > 0 {
+        if !self.photos_batch.is_empty() {
             let photo = &self.photos_batch[self.photo_index];
             match api::get_photo(
                 &|url, form| client.get(url, form),
@@ -81,18 +81,18 @@ impl Slideshow {
                     if let PhotosApiError::InvalidHttpResponse(StatusCode::NOT_FOUND) = error {
                         /* Photo has been removed since we fetched its metadata, try next one */
                         self.photo_index += 1;
-                        return self.get_next_photo((client, cookie_store), None);
+                        self.get_next_photo((client, cookie_store), None)
                     } else {
-                        return Err(error.to_string());
+                        Err(error.to_string())
                     }
                 }
                 Ok(photo_bytes) => {
                     self.photo_index += 1;
-                    return Ok(photo_bytes);
+                    Ok(photo_bytes)
                 }
             }
         } else {
-            return Err("Album is empty".to_string());
+            Err("Album is empty".to_string())
         }
     }
 
