@@ -92,7 +92,11 @@ pub fn create_canvas(video: &VideoSubsystem, (w, h): (u32, u32)) -> Result<Canva
         .map_err_to_string()?;
     /* Seems this needs to be set after window has been created to work. */
     video.sdl().mouse().show_cursor(false);
-    let mut canvas = window.into_canvas().build().map_err_to_string()?;
+    let mut canvas = window
+        .into_canvas()
+        .present_vsync()
+        .build()
+        .map_err_to_string()?;
     /* Transition effects draw semi-transparent box on canvas */
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
     Ok(canvas)
