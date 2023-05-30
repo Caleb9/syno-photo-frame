@@ -1,4 +1,5 @@
 pub use clap::Parser;
+use clap::ValueEnum;
 
 use crate::http::Url;
 
@@ -18,9 +19,19 @@ pub struct Cli {
     #[arg(short = 'i', long = "interval", default_value_t = 30, value_parser = clap::value_parser!(u16).range(5..))]
     pub interval_seconds: u16,
 
-    /// Start slideshow at randomly selected photo
-    #[arg(long)]
-    pub random_start: bool,
+    /// Slideshow ordering
+    #[arg(long, value_enum, default_value_t = Order::ByDate)]
+    pub order: Order,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum Order {
+    /// ordered by photo shooting date
+    ByDate,
+    /// ordered by photo shooting date but starting at randomly selected photo
+    RandomStart,
+    /// in random order
+    Random,
 }
 
 #[test]

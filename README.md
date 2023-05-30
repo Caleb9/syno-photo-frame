@@ -165,12 +165,14 @@ solution, e.g. for Raspberry Pi Zero I'm using [Witty Pi 3
 Mini](https://www.adafruit.com/product/5038).
 
 
-### Start Slideshow From Random Photo
+### Start Slideshow From Random Photo and Random Order
 
-If the album is very large, and the startup-shutdown schedule is
-short, potentially the slideshow might never display some of the later
-photos in the album. The `--random-start` option solves the problem by
-starting the slideshow at randomly picked photo.
+By default photos are displayed in the order of shooting date. If the
+album is very large, and the startup-shutdown schedule is short,
+potentially the slideshow might never reach some of the later photos
+in the album. The `--order random-start` option solves the problem by
+starting the slideshow at randomly selected photo. Adding this option
+to the startup schedule will start at a different photo every time.
 
 
 ### Auto Brightness

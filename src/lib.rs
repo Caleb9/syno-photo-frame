@@ -25,24 +25,23 @@ mod transition;
 #[cfg(test)]
 mod test_helpers;
 
+pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
+
 pub fn run<C: Client, S: Sdl>(
     cli: &Cli,
     http: (&C, &Arc<dyn CookieStore>),
     sdl: &mut S,
     sleep: fn(Duration),
-    random: fn(Range<u32>) -> u32,
+    random: Random,
 ) -> Result<(), String> {
-    let slideshow = Arc::new(Mutex::new(Slideshow::try_from(&cli.share_link)?));
+    let slideshow = Arc::new(Mutex::new(
+        Slideshow::try_from(&cli.share_link)?.with_ordering(cli.order),
+    ));
 
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
 
     /* Initialize slideshow by getting the first photo and starting with fade-in */
-    let first_photo_thread = get_next_photo_thread(
-        &slideshow,
-        http,
-        sdl.size(),
-        if cli.random_start { Some(random) } else { None },
-    );
+    let first_photo_thread = get_next_photo_thread(&slideshow, http, sdl.size(), random);
     while !first_photo_thread.is_finished() {
         if is_exit_requested(sdl) {
             return Ok(());
@@ -55,14 +54,14 @@ pub fn run<C: Client, S: Sdl>(
     Transition::In.play(sdl)?;
 
     /* Continue indefinitely */
-    slideshow_loop(http, sdl, &slideshow, photo_change_interval, sleep)
+    slideshow_loop(http, sdl, &slideshow, photo_change_interval, sleep, random)
 }
 
 fn get_next_photo_thread<C: Client>(
     slideshow: &Arc<Mutex<Slideshow>>,
     (client, cookie_store): (&C, &Arc<dyn CookieStore>),
     dimensions: (u32, u32),
-    random: Option<fn(Range<u32>) -> u32>,
+    random: Random,
 ) -> JoinHandle<Result<DynamicImage, String>> {
     let (client, slideshow, cookie_store) =
         (client.clone(), slideshow.clone(), cookie_store.clone());
@@ -94,9 +93,10 @@ fn slideshow_loop<C: Client, S: Sdl>(
     slideshow: &Arc<Mutex<Slideshow>>,
     photo_change_interval: Duration,
     sleep: fn(Duration),
+    random: Random,
 ) -> Result<(), String> {
     let mut last_change = Instant::now();
-    let mut next_photo_thread = get_next_photo_thread(slideshow, http, sdl.size(), None);
+    let mut next_photo_thread = get_next_photo_thread(slideshow, http, sdl.size(), random);
     loop {
         if is_exit_requested(sdl) {
             break;
@@ -107,7 +107,7 @@ fn slideshow_loop<C: Client, S: Sdl>(
         if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
             Transition::Out.play(sdl)?;
             sdl.update_texture(next_photo_thread.join().unwrap()?.as_bytes())?;
-            next_photo_thread = get_next_photo_thread(slideshow, http, sdl.size(), None);
+            next_photo_thread = get_next_photo_thread(slideshow, http, sdl.size(), random);
             Transition::In.play(sdl)?;
             last_change = Instant::now();
         } else {

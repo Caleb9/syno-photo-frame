@@ -5,21 +5,20 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::{
-    http::{Response, StatusCode, Url},
+    http::{Client, Response, StatusCode, Url},
     ErrorToString,
 };
 
 use PhotosApiError::{InvalidApiResponse, InvalidHttpResponse};
 
 #[derive(Debug)]
-pub(crate) enum PhotosApiError {
-    Reqwest(String),
-    InvalidHttpResponse(StatusCode),
-    InvalidApiResponse(&'static str, i32),
-}
-
-#[derive(Debug)]
 pub(crate) struct SharingId(String);
+
+impl Display for SharingId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Returns Synology Photos API URL and sharing id extracted from album share link
 pub(crate) fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
@@ -35,22 +34,18 @@ pub(crate) fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), Str
     }
 }
 
-pub(crate) fn login<P, R>(
-    post: &P,
+pub(crate) fn login(
+    client: &impl Client,
     api_url: &Url,
     sharing_id: &SharingId,
-) -> Result<(), PhotosApiError>
-where
-    P: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
-    R: Response,
-{
+) -> Result<(), PhotosApiError> {
     let params = [
         ("api", "SYNO.Core.Sharing.Login"),
         ("method", "login"),
         ("version", "1"),
         ("sharing_id", &sharing_id.0),
     ];
-    let response = post(api_url.as_str(), &params, None)?;
+    let response = client.post(api_url.as_str(), &params, None)?;
     read_response(response, |response| {
         let dto = response.json::<dto::ApiResponse<dto::Login>>()?;
         if !dto.success {
@@ -61,21 +56,17 @@ where
     })
 }
 
-pub(crate) fn get_album_contents_count<P, R>(
-    post: &P,
+pub(crate) fn get_album_contents_count(
+    client: &impl Client,
     api_url: &Url,
     sharing_id: &SharingId,
-) -> Result<Vec<dto::Album>, PhotosApiError>
-where
-    P: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
-    R: Response,
-{
+) -> Result<Vec<dto::Album>, PhotosApiError> {
     let params = [
         ("api", "SYNO.Foto.Browse.Album"),
         ("method", "get"),
         ("version", "1"),
     ];
-    let response = post(
+    let response = client.post(
         api_url.as_str(),
         &params,
         Some(("X-SYNO-SHARING", &sharing_id.0)),
@@ -93,17 +84,36 @@ where
     })
 }
 
-pub(crate) fn get_album_contents<P, R>(
-    post: &P,
+/// Synology Photos API accepts limit values between 0 and 5000
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Limit(u32);
+
+impl TryFrom<u32> for Limit {
+    type Error = &'static str;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value > 5000 {
+            Err("Limit only accepts values up to 5000")
+        } else {
+            Ok(Limit(value))
+        }
+    }
+}
+
+impl Display for Limit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Gets metadata for photos contained in an album
+pub(crate) fn get_album_contents(
+    client: &impl Client,
     api_url: &Url,
     sharing_id: &SharingId,
     offset: u32,
-    limit: u32,
-) -> Result<Vec<dto::Photo>, PhotosApiError>
-where
-    P: Fn(&str, &[(&str, &str)], Option<(&str, &str)>) -> Result<R, String>,
-    R: Response,
-{
+    limit: Limit,
+) -> Result<Vec<dto::Photo>, PhotosApiError> {
     let params = [
         ("api", "SYNO.Foto.Browse.Item"),
         ("method", "list"),
@@ -114,7 +124,7 @@ where
         ("sort_by", "takentime"),
         ("sort_direction", "asc"),
     ];
-    let response = post(
+    let response = client.post(
         api_url.as_str(),
         &params,
         Some(("X-SYNO-SHARING", &sharing_id.0)),
@@ -132,37 +142,34 @@ where
     })
 }
 
-pub(crate) fn get_photo<G, R>(
-    get: &G,
+/// Gets JPEG photo bytes
+pub(crate) fn get_photo(
+    client: &impl Client,
     api_url: &Url,
     sharing_id: &SharingId,
-    photo_dto: &dto::Photo,
-) -> Result<Bytes, PhotosApiError>
-where
-    G: Fn(&str, &[(&str, &str)]) -> Result<R, String>,
-    R: Response,
-{
+    (photo_id, photo_cache_key): (i32, &str),
+) -> Result<Bytes, PhotosApiError> {
     let params = [
         ("api", "SYNO.Foto.Thumbnail"),
         ("method", "get"),
         ("version", "2"),
         ("_sharing_id", &sharing_id.0),
-        ("id", &photo_dto.id.to_string()),
-        ("cache_key", &photo_dto.additional.thumbnail.cache_key),
+        ("id", &photo_id.to_string()),
+        ("cache_key", photo_cache_key),
         ("type", "unit"),
         ("size", "xl"),
     ];
-    let response = get(api_url.as_str(), &params)?;
+    let response = client.get(api_url.as_str(), &params)?;
     read_response(response, |response| {
         let bytes = response.bytes()?;
         Ok(bytes)
     })
 }
 
-fn read_response<S, R, T>(response: R, on_success: S) -> Result<T, PhotosApiError>
+fn read_response<R, S, T>(response: R, on_success: S) -> Result<T, PhotosApiError>
 where
-    S: FnOnce(R) -> Result<T, PhotosApiError>,
     R: Response,
+    S: FnOnce(R) -> Result<T, PhotosApiError>,
 {
     let status = response.status();
     if !status.is_success() {
@@ -170,6 +177,13 @@ where
     } else {
         on_success(response)
     }
+}
+
+#[derive(Debug)]
+pub(crate) enum PhotosApiError {
+    Reqwest(String),
+    InvalidHttpResponse(StatusCode),
+    InvalidApiResponse(&'static str, i32),
 }
 
 impl Display for PhotosApiError {
@@ -191,12 +205,6 @@ impl Error for PhotosApiError {}
 impl From<String> for PhotosApiError {
     fn from(value: String) -> Self {
         PhotosApiError::Reqwest(value)
-    }
-}
-
-impl Display for SharingId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

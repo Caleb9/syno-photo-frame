@@ -1,12 +1,13 @@
 use std::{error::Error, process, sync::Arc, thread};
 
-use rand::{self, Rng};
+use rand::{self, seq::SliceRandom, Rng};
 
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
     http::{ClientBuilder, CookieStore, ReqwestClient},
     sdl::{self, SdlWrapper},
+    Random,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -29,6 +30,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let events = video.sdl().event_pump()?;
     let mut sdl = SdlWrapper::new(canvas, texture, events);
 
+    /* Random */
+    let random: Random = (
+        |range| rand::thread_rng().gen_range(range),
+        |slice| slice.shuffle(&mut rand::thread_rng()),
+    );
+
     syno_photo_frame::run(
         &cli,
         (
@@ -37,7 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         &mut sdl,
         thread::sleep,
-        |range| rand::thread_rng().gen_range(range),
+        random,
     )?;
 
     Ok(())
