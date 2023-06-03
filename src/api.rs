@@ -1,7 +1,6 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, sync::OnceLock};
 
 use bytes::Bytes;
-use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::{
@@ -22,10 +21,9 @@ impl Display for SharingId {
 
 /// Returns Synology Photos API URL and sharing id extracted from album share link
 pub(crate) fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"^(https?://.+)/([^/]+)/?$").unwrap();
-    }
-    if let Some(captures) = RE.captures(share_link.as_str()) {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"^(https?://.+)/([^/]+)/?$").unwrap());
+    if let Some(captures) = re.captures(share_link.as_str()) {
         let api_url =
             Url::parse(&format!("{}/webapi/entry.cgi", &captures[1])).map_err_to_string()?;
         Ok((api_url, SharingId(captures[2].to_owned())))

@@ -171,8 +171,12 @@ By default photos are displayed in the order of shooting date. If the
 album is very large, and the startup-shutdown schedule is short,
 potentially the slideshow might never reach some of the later photos
 in the album. The `--order random-start` option solves the problem by
-starting the slideshow at randomly selected photo. Adding this option
-to the startup schedule will start at a different photo every time.
+starting the slideshow at randomly selected photo, then continuing
+normally (in order of shooting date). Adding this option to the
+startup schedule will start at a different photo every time.
+
+Alternatively use `--order random` to display photos in completely
+random order.
 
 
 ### Auto Brightness
