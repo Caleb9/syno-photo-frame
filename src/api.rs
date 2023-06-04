@@ -23,13 +23,11 @@ impl Display for SharingId {
 pub(crate) fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"^(https?://.+)/([^/]+)/?$").unwrap());
-    if let Some(captures) = re.captures(share_link.as_str()) {
-        let api_url =
-            Url::parse(&format!("{}/webapi/entry.cgi", &captures[1])).map_err_to_string()?;
-        Ok((api_url, SharingId(captures[2].to_owned())))
-    } else {
-        Err(format!("Invalid share link: {share_link}"))
-    }
+    let Some(captures) = re.captures(share_link.as_str()) else {
+        return Err(format!("Invalid share link: {share_link}"));
+    };
+    let api_url = Url::parse(&format!("{}/webapi/entry.cgi", &captures[1])).map_err_to_string()?;
+    Ok((api_url, SharingId(captures[2].to_owned())))
 }
 
 pub(crate) fn login(

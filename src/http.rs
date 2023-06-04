@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 use crate::ErrorToString;
 
 /// Isolates reqwest's Client for testing
-pub trait Client: Clone + Send + 'static {
+pub trait Client: Clone + Send {
     type Response: Response;
 
     fn post(
