@@ -28,9 +28,8 @@ pub trait Client: Clone + Send {
 pub trait Response {
     fn status(&self) -> StatusCode;
 
-    fn json<T>(self) -> Result<T, String>
-    where
-        T: DeserializeOwned + 'static; /* 'static is needed by automock */
+    /* 'static is needed by automock */
+    fn json<T: DeserializeOwned + 'static>(self) -> Result<T, String>;
 
     fn bytes(self) -> Result<Bytes, String>;
 }

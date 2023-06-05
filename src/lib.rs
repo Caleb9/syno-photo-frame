@@ -27,10 +27,10 @@ mod test_helpers;
 
 pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
 
-pub fn run<C: Client, S: Sdl>(
+pub fn run(
     cli: &Cli,
-    http: (&C, &Arc<dyn CookieStore>),
-    sdl: &mut S,
+    http: (&impl Client, &Arc<dyn CookieStore>),
+    sdl: &mut impl Sdl,
     sleep: fn(Duration),
     random: Random,
 ) -> Result<(), String> {
@@ -40,8 +40,8 @@ pub fn run<C: Client, S: Sdl>(
 
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
 
+    /* Initialize slideshow by getting the first photo and starting with fade-in */
     thread::scope::<'_, _, Result<(), String>>(|thread_scope| {
-        /* Initialize slideshow by getting the first photo and starting with fade-in */
         let first_photo_thread =
             get_next_photo_thread(&slideshow, http, sdl.size(), random, thread_scope);
         while !first_photo_thread.is_finished() {
@@ -52,8 +52,7 @@ pub fn run<C: Client, S: Sdl>(
             const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
             sleep(LOOP_SLEEP_DURATION);
         }
-        sdl.update_texture(first_photo_thread.join().unwrap()?.as_bytes())?;
-        Ok(())
+        sdl.update_texture(first_photo_thread.join().unwrap()?.as_bytes())
     })?;
     Transition::In.play(sdl)?;
 
@@ -61,9 +60,9 @@ pub fn run<C: Client, S: Sdl>(
     slideshow_loop(http, sdl, &slideshow, photo_change_interval, sleep, random)
 }
 
-fn get_next_photo_thread<'a, C: Client + 'a>(
+fn get_next_photo_thread<'a>(
     slideshow: &Arc<Mutex<Slideshow>>,
-    (client, cookie_store): (&C, &Arc<dyn CookieStore>),
+    (client, cookie_store): (&'a impl Client, &Arc<dyn CookieStore>),
     dimensions: (u32, u32),
     random: Random,
     thread_scope: &'a Scope<'a, '_>,
@@ -81,18 +80,13 @@ fn get_next_photo_thread<'a, C: Client + 'a>(
     })
 }
 
-fn is_exit_requested<S: Sdl>(sdl: &mut S) -> bool {
-    for event in sdl.events() {
-        if let Event::Quit { .. } = event {
-            return true;
-        }
-    }
-    false
+fn is_exit_requested(sdl: &mut impl Sdl) -> bool {
+    sdl.events().any(|e| matches!(e, Event::Quit { .. }))
 }
 
-fn slideshow_loop<C: Client, S: Sdl>(
-    http: (&C, &Arc<dyn CookieStore>),
-    sdl: &mut S,
+fn slideshow_loop(
+    http: (&impl Client, &Arc<dyn CookieStore>),
+    sdl: &mut impl Sdl,
     slideshow: &Arc<Mutex<Slideshow>>,
     photo_change_interval: Duration,
     sleep: fn(Duration),

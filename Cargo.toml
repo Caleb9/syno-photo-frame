@@ -1,6 +1,6 @@
 [package]
 name = "syno-photo-frame"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 description = "Full-screen slideshow for Synology Photos albums"
 license = "GPL-3.0-or-later"
@@ -45,11 +45,6 @@ reqwest = { version = "0.11.*", features = [
     "cookies",
     "json",
     "native-tls-vendored",
-] }
-# When compiling for Raspberry Pi, embed sdl2 library into the binary.
-sdl2 = { git = "https://github.com/rust-sdl2/rust-sdl2", version = "0.*", features = [
-    "bundled",
-    "static-link",
 ] }
 
 [package.metadata.cross.target.aarch64-unknown-linux-gnu]

@@ -61,36 +61,41 @@ Raspberry Pi OS Lite, network has been set up (so you can access the
 Synology NAS) and you have command line access to the Pi.
 
 
-### 1. Install Runtime Dependencies
+### 1. Install
 
-Update the system and install the OS packages needed to run the app
+Update the system
 
 ```
 sudo -- sh -c ' \
 apt update && \
-apt upgrade -y && \
-apt install -y libgl1 libegl1
+apt upgrade -y
 ```
 
-
-### 2. Download and Run
-
 [Releases](https://github.com/Caleb9/syno-photo-frame/releases)
-contains pre-built binary for aarch64 Linux target, which should work
+contains pre-built .deb package for aarch64 Linux target, which should work
 on Raspberry Pi 3 and up, as well as Zero 2 (assuming 64bit version of
 Raspbian OS is installed). For other platforms you must build the
 project yourself - see [Building From Source](#building-from-source).
 
-Download the `syno-photo-frame` binary from Releases.
+Download the `syno-photo-frame_X.Y.Z_arm64.deb` package from Releases.
+
+`cd` to directory where the package has been downloaded and install
+with
+
+```
+sudo apt install ./syno-photo-frame_X.Y.Z_arm64.deb
+```
+
+### 2. Run
 
 Display help message:
 ```
-./syno-photo-frame --help
+syno-photo-frame --help
 ```
 
 Run the app:
 ```
-./syno-photo-frame {sharing link to Synology Photos album}
+syno-photo-frame {sharing link to Synology Photos album}
 ```
 
 If everything works as expected, press Ctrl-C to kill the app.
@@ -108,8 +113,6 @@ apt update && \
 apt upgrade -y && \
 apt install -y \
 	libsdl2-dev \
-	libdrm-dev \
-	libgbm-dev \
 	libssl-dev \
 	cmake
 ```
@@ -120,12 +123,6 @@ cargo build --release
 ```
 
 The binary is located at `target/release/syno-photo-frame`.
-
-
-### Notes
-
-For targets other than `aarch64-unknown-linux-gnu`, only `libsdl2-dev`
-and `libssl-dev` are needed as it uses dynamically linked libs.
 
 
 ## Optional Stuff
@@ -145,7 +142,7 @@ crontab -e
 ```
 Add something like this at the end of crontab:
 ```
-@reboot    sleep 5 && /home/pi/syno-photo-frame https://{share_link} >> /tmp/syno-photo-frame.log 2>&1
+@reboot    sleep 5 && /bin/syno-photo-frame https://{share_link} >> /tmp/syno-photo-frame.log 2>&1
 ```
 
 Remember to replace your share link with a real one. Short sleep is

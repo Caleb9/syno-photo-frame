@@ -1,0 +1,10 @@
+Package: syno-photo-frame
+Version: 0.0.0
+Section: utils
+Priority: optional
+Architecture: arm64
+Maintainer: Piotr Karasinski <7767011+Caleb9@users.noreply.github.com>
+Description: Full-screen slideshow for Synology Photos albums
+ .
+Depends: libc6 (>= 2.31), libsdl2-2.0-0 (>= 2.0.14)
+Homepage: https://github.com/Caleb9/syno-photo-frame
