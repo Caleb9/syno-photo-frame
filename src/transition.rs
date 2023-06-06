@@ -12,7 +12,7 @@ pub(crate) enum Transition {
     Out,
 }
 
-/// Possibly parametrize this and take command line argument to control length of the transition
+// Possibly parametrize this and take command line argument to control length of the transition
 const TRANSITION_DURATION_SECS: f64 = 2_f64;
 const TRANSITION_ALPHA_MIN: f64 = 0_f64;
 const TRANSITION_ALPHA_MAX: f64 = 255_f64;

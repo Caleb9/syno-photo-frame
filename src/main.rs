@@ -1,24 +1,38 @@
-use std::{error::Error, process, sync::Arc, thread};
+use std::{error::Error, process, sync::Arc, thread, time::Duration};
 
+use log::LevelFilter;
 use rand::{self, seq::SliceRandom, Rng};
+use simple_logger::SimpleLogger;
 
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
     http::{ClientBuilder, CookieStore, ReqwestClient},
+    logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
     Random,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
-    ctrlc::set_handler(|| process::exit(0))?;
+    ctrlc::set_handler(|| {
+        log::debug!("ctrlc signal received, exiting");
+        process::exit(0);
+    })?;
+
+    SimpleLogger::new()
+        .with_level(LevelFilter::Info)
+        .env()
+        .init()?;
 
     let cli = Cli::parse();
 
     /* HTTP client */
     let cookie_store = Arc::new(reqwest::cookie::Jar::default());
+    const TIMEOUT: Duration = Duration::from_secs(20);
+    // const TIMEOUT: Duration = Duration::from_millis(100);
     let client = ClientBuilder::new()
         .cookie_provider(cookie_store.clone())
+        .timeout(TIMEOUT)
         .build()?;
 
     /* SDL */
@@ -36,16 +50,22 @@ fn main() -> Result<(), Box<dyn Error>> {
         |slice| slice.shuffle(&mut rand::thread_rng()),
     );
 
-    syno_photo_frame::run(
+    let result = syno_photo_frame::run(
         &cli,
         (
-            &ReqwestClient::from(client),
+            &LoggingClientDecorator::new(ReqwestClient::from(client)).with_level(log::Level::Trace),
             &(cookie_store as Arc<dyn CookieStore>),
         ),
         &mut sdl,
         thread::sleep,
         random,
-    )?;
+    );
 
-    Ok(())
+    match result {
+        Err(error) => {
+            log::error!("{error}");
+            Err(error)?
+        }
+        _ => Ok(()),
+    }
 }

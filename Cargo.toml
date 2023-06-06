@@ -1,6 +1,6 @@
 [package]
 name = "syno-photo-frame"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "Full-screen slideshow for Synology Photos albums"
 license = "GPL-3.0-or-later"
@@ -23,31 +23,14 @@ bytes = "1.*"
 clap = { version = "4.*", features = ["derive", "wrap_help"] }
 ctrlc = { version = "3.*", features = ["termination"] }
 image = { version = "0.24.*", default-features = false, features = ["jpeg"] }
+log = "0.4.*"
 rand = "0.8.*"
 regex = "1.*"
 reqwest = { version = "0.11.*", features = ["blocking", "cookies", "json"] }
-# Latest available semver (0.35.2) does not compile with bundled and static-link features (used when compiling for 
-# aarch64-unknown-linux-gnu target). The github version does. It seems to be an error to use different versions (semver
-# and github) for different targets.
-sdl2 = { git = "https://github.com/rust-sdl2/rust-sdl2", version = "0.*" }
+sdl2 = "0.*"
 serde = { version = "1.*", features = ["derive"] }
+simple_logger = "4.*"
 
 [dev-dependencies]
 mock_instant = "0.3.*"
 mockall = "0.11.*"
-
-[target.aarch64-unknown-linux-gnu.dependencies]
-# Base docker image used when cross-compiling for aarch64 is Ubuntu based, and has libssl-dev 1.0 available. Raspbian OS
-# is pure Debian based and uses libssl-dev 1.1. Enabling native-tls-vendored embeds statically linked version of the
-# library, so cross-compiled binary executes on Raspbian OS.
-reqwest = { version = "0.11.*", features = [
-    "blocking",
-    "cookies",
-    "json",
-    "native-tls-vendored",
-] }
-
-[package.metadata.cross.target.aarch64-unknown-linux-gnu]
-pre-build = [
-    "dpkg --add-architecture arm64 && apt-get update && apt-get install --assume-yes libsdl2-dev:arm64 libgbm-dev:arm64",
-]

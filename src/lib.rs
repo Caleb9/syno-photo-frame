@@ -15,6 +15,7 @@ use transition::Transition;
 
 pub mod cli;
 pub mod http;
+pub mod logging;
 pub mod sdl;
 
 mod api;
@@ -81,7 +82,13 @@ fn get_next_photo_thread<'a>(
 }
 
 fn is_exit_requested(sdl: &mut impl Sdl) -> bool {
-    sdl.events().any(|e| matches!(e, Event::Quit { .. }))
+    sdl.events().any(|e| match e {
+        event @ (Event::Quit { .. } | Event::AppTerminating { .. }) => {
+            log::debug!("SDL event received: {event:?}");
+            true
+        }
+        _ => false,
+    })
 }
 
 fn slideshow_loop(
