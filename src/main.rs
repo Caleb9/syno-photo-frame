@@ -10,7 +10,7 @@ use syno_photo_frame::{
     http::{ClientBuilder, CookieStore, ReqwestClient},
     logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
-    Random,
+    ErrorToString, Random,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -24,16 +24,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         .env()
         .init()?;
 
+    match init_and_run() {
+        Err(error) => {
+            log::error!("{error}");
+            Err(error)?
+        }
+        _ => Ok(()),
+    }
+}
+
+fn init_and_run() -> Result<(), String> {
     let cli = Cli::parse();
 
     /* HTTP client */
     let cookie_store = Arc::new(reqwest::cookie::Jar::default());
     const TIMEOUT: Duration = Duration::from_secs(20);
-    // const TIMEOUT: Duration = Duration::from_millis(100);
     let client = ClientBuilder::new()
         .cookie_provider(cookie_store.clone())
         .timeout(TIMEOUT)
-        .build()?;
+        .build()
+        .map_err_to_string()?;
 
     /* SDL */
     let video = sdl::init_video()?;
@@ -50,7 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         |slice| slice.shuffle(&mut rand::thread_rng()),
     );
 
-    let result = syno_photo_frame::run(
+    syno_photo_frame::run(
         &cli,
         (
             &LoggingClientDecorator::new(ReqwestClient::from(client)).with_level(log::Level::Trace),
@@ -59,13 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &mut sdl,
         thread::sleep,
         random,
-    );
+    )?;
 
-    match result {
-        Err(error) => {
-            log::error!("{error}");
-            Err(error)?
-        }
-        _ => Ok(()),
-    }
+    Ok(())
 }
