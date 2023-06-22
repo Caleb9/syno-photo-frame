@@ -1,6 +1,7 @@
 use std::{
     fmt::Display,
     ops::Range,
+    path::PathBuf,
     sync::{Arc, Mutex},
     thread::{self, Scope, ScopedJoinHandle},
     time::{Duration, Instant},
@@ -42,12 +43,13 @@ pub fn run(
 
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
 
-    show_welcome_screen(sdl)?;
-
     /* Initialize slideshow by getting the first photo and starting with fade-in */
     thread::scope::<'_, _, Result<(), String>>(|thread_scope| {
         let first_photo_thread =
             get_next_photo_thread(&slideshow, http, sdl.size(), random, thread_scope);
+
+        show_welcome_screen(sdl, &cli.splash)?;
+
         while !first_photo_thread.is_finished() {
             if is_exit_requested(sdl) {
                 return Ok(());
@@ -64,8 +66,21 @@ pub fn run(
     slideshow_loop(http, sdl, &slideshow, photo_change_interval, sleep, random)
 }
 
-fn show_welcome_screen(sdl: &mut impl Sdl) -> Result<(), String> {
-    sdl.update_texture(asset::welcome_image(sdl.size())?.as_bytes())?;
+fn show_welcome_screen(sdl: &mut impl Sdl, custom_splash: &Option<PathBuf>) -> Result<(), String> {
+    let welcome_img = match custom_splash {
+        None => asset::welcome_image(sdl.size())?,
+        Some(path) => {
+            let (w, h) = sdl.size();
+            match img::open(path) {
+                Ok(image) => image.resize_exact(w, h, image::imageops::FilterType::Nearest),
+                Err(error) => {
+                    log::error!("Splashscreen {}: {error}", path.to_string_lossy());
+                    asset::welcome_image(sdl.size())?
+                }
+            }
+        }
+    };
+    sdl.update_texture(welcome_img.as_bytes())?;
     sdl.copy_texture_to_canvas()?;
     sdl.present_canvas();
     Ok(())

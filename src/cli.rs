@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 pub use clap::Parser;
 use clap::ValueEnum;
 
@@ -22,6 +24,10 @@ pub struct Cli {
     /// Slideshow ordering
     #[arg(long, value_enum, default_value_t = Order::ByDate)]
     pub order: Order,
+
+    /// Path to a JPEG file to display during startup, replacing the default splash-screen
+    #[arg(long)]
+    pub splash: Option<PathBuf>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

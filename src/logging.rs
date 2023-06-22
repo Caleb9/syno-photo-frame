@@ -2,9 +2,9 @@ use core::fmt::Debug;
 
 use log::Level;
 
-use super::http::{Client, Response};
+use crate::http::{Client, Response};
 
-/// Adds logging to http::Client
+/// Adds logging to [crate::http::Client]
 #[derive(Clone, Debug)]
 pub struct LoggingClientDecorator<C> {
     client: C,

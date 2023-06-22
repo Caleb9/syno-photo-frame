@@ -1,6 +1,6 @@
 use std::thread::{self, JoinHandle};
 
-pub(crate) use image::DynamicImage;
+pub(crate) use image::{open, DynamicImage};
 
 use image::{
     self,
