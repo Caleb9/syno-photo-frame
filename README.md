@@ -68,7 +68,7 @@ Update the system
 ```
 sudo -- sh -c ' \
 apt update && \
-apt upgrade -y
+apt upgrade -y'
 ```
 
 [Releases](https://github.com/Caleb9/syno-photo-frame/releases)
@@ -114,7 +114,7 @@ apt upgrade -y && \
 apt install -y \
 	libsdl2-dev \
 	libssl-dev \
-	cmake
+	cmake'
 ```
 
 Build the project:
