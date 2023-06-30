@@ -113,16 +113,23 @@ apt update && \
 apt upgrade -y && \
 apt install -y \
 	libsdl2-dev \
-	libssl-dev \
-	cmake'
+	libssl-dev'
 ```
 
-Build the project:
+Install the app from [crates.io](https://crates.io/crates/syno-photo-frame):
+```
+cargo install syno-photo-frame
+```
+
+The binary is then located at `$HOME/.cargo/bin/syno-photo-frame` and
+should be available on your `$PATH`.
+
+Alternatively, clone the git repository and build the project with:
 ```
 cargo build --release
 ```
 
-The binary is located at `target/release/syno-photo-frame`.
+The binary is then located at `target/release/syno-photo-frame`.
 
 
 ## Optional Stuff
@@ -136,7 +143,7 @@ Pi](https://pimylifeup.com/raspberry-pi-swap-file/).
 
 ### Auto-start
 
-So that the slideshow starts automatically on boot, you can add it to crontab:
+To start the slideshow automatically on boot, you can add it to crontab:
 ```
 crontab -e
 ```
@@ -145,10 +152,12 @@ Add something like this at the end of crontab:
 @reboot    sleep 5 && /bin/syno-photo-frame https://{share_link} >> /tmp/syno-photo-frame.log 2>&1
 ```
 
-Remember to replace your share link with a real one. Short sleep is
-required to not start before some services (like network) are
-started - try to increase it if errors occur. Error messages get
-redirected to a log file.
+Remember to replace your share link with a real one, and adjust the
+binary path depending on installation method (dpkg or from
+crates.io). Short `sleep` is required to not start before some
+services (network) are up - try to increase it if errors occur. The
+above command redirects error messages to a log file
+`/tmp/syno-photo-frame.log`.
 
 For other (untested) alternatives see e.g. [this
 article](https://www.dexterindustries.com/howto/run-a-program-on-your-raspberry-pi-at-startup/).
@@ -174,6 +183,13 @@ startup schedule will start at a different photo every time.
 
 Alternatively use `--order random` to display photos in completely
 random order.
+
+
+### Customize splash-screen
+
+You can replace the default image displayed during loading of first
+photo. Use the `--splash` option to point the app to a .jpeg file
+location.
 
 
 ### Auto Brightness
