@@ -1,3 +1,5 @@
+//! HTTP request-response handling
+
 pub(crate) use bytes::Bytes;
 pub use reqwest::{blocking::ClientBuilder, cookie::CookieStore};
 pub(crate) use reqwest::{StatusCode, Url};
@@ -9,7 +11,7 @@ use serde::de::DeserializeOwned;
 
 use crate::ErrorToString;
 
-/// Isolates reqwest's Client for testing
+/// Isolates [reqwest::blocking::Client] for testing
 pub trait Client: Clone + Send {
     type Response: Response;
 
@@ -23,7 +25,7 @@ pub trait Client: Clone + Send {
     fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<Self::Response, String>;
 }
 
-/// Isolates reqwest's Response for testing
+/// Isolates [reqwest::blocking::Response] for testing
 #[cfg_attr(test, mockall::automock)]
 pub trait Response {
     fn status(&self) -> StatusCode;
@@ -34,7 +36,7 @@ pub trait Response {
     fn bytes(self) -> Result<Bytes, String>;
 }
 
-/// Production implementation of `Client`
+/// Wrapper for [reqwest::blocking::Client]
 #[derive(Clone, Debug)]
 pub struct ReqwestClient {
     client: reqwest::blocking::Client,
@@ -74,6 +76,7 @@ impl Client for ReqwestClient {
     }
 }
 
+/// Wrapper for [reqwest::blocking::Response]
 #[derive(Debug)]
 pub struct ReqwestResponse {
     response: reqwest::blocking::Response,

@@ -1,3 +1,5 @@
+//! CLI options
+
 use std::path::PathBuf;
 
 pub use clap::Parser;
@@ -30,6 +32,7 @@ pub struct Cli {
     pub splash: Option<PathBuf>,
 }
 
+/// Slideshow ordering
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum Order {
     /// ordered by photo shooting date

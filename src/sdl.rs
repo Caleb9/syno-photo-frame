@@ -1,3 +1,5 @@
+//! Rendering
+
 pub(crate) use sdl2::{event::Event, pixels::Color};
 
 use sdl2::{
@@ -10,6 +12,7 @@ use sdl2::{
 use crate::ErrorToString;
 
 #[cfg_attr(test, mockall::automock)]
+/// Isolates [sdl2::Sdl] context for testing
 pub trait Sdl {
     /// Gets screen size
     fn size(&self) -> (u32, u32);
@@ -49,6 +52,7 @@ impl<'a> Sdl for SdlWrapper<'a> {
     }
 }
 
+/// Container for components from [sdl2::Sdl]
 pub struct SdlWrapper<'a> {
     canvas: Canvas<Window>,
     texture: Texture<'a>,
@@ -72,6 +76,7 @@ impl<'a> SdlWrapper<'a> {
     }
 }
 
+/// Initializes SDL video subsystem. **Must be called before using any other function in this module**
 pub fn init_video() -> Result<VideoSubsystem, String> {
     sdl2::init()?.video()
 }
@@ -84,13 +89,14 @@ pub fn display_size(video: &VideoSubsystem) -> Result<(u32, u32), String> {
     Ok((u32::try_from(w).unwrap(), u32::try_from(h).unwrap()))
 }
 
+/// Sets up a renderer
 pub fn create_canvas(video: &VideoSubsystem, (w, h): (u32, u32)) -> Result<Canvas<Window>, String> {
     let window = video
         .window("syno-photo-frame", w, h)
         .fullscreen()
         .build()
         .map_err_to_string()?;
-    /* Seems this needs to be set after window has been created to work. */
+    /* Seems this needs to be set _after_ window has been created. */
     video.sdl().mouse().show_cursor(false);
     let mut canvas = window
         .into_canvas()
@@ -102,6 +108,7 @@ pub fn create_canvas(video: &VideoSubsystem, (w, h): (u32, u32)) -> Result<Canva
     Ok(canvas)
 }
 
+/// Creates a texture which will contain rendered images
 pub fn create_texture(
     texture_creator: &TextureCreator<WindowContext>,
     (w, h): (u32, u32),

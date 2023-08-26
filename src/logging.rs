@@ -1,3 +1,5 @@
+//! Logging
+
 use core::fmt::Debug;
 
 use log::Level;

@@ -1,3 +1,7 @@
+//! # syno-photo-frame
+//!
+//! syno_photo_frame is a full-screen slideshow app for Synology Photos albums
+
 use std::{
     fmt::Display,
     ops::Range,
@@ -28,8 +32,10 @@ mod transition;
 #[cfg(test)]
 mod test_helpers;
 
+/// Functions for randomized slideshow ordering
 pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
 
+/// Slideshow loop
 pub fn run(
     cli: &Cli,
     http: (&impl Client, &Arc<dyn CookieStore>),
@@ -165,6 +171,7 @@ fn slideshow_loop(
     })
 }
 
+/// Maps [Result<T,E>] to [Result<T,String>]
 pub trait ErrorToString<T> {
     fn map_err_to_string(self) -> Result<T, String>;
 }
