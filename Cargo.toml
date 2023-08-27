@@ -15,6 +15,11 @@ keywords = [
     "raspberry-pi",
 ]
 rust-version = "1.70"
+exclude = [
+    "doc/",
+    "dpkg/",
+    "images/*.xcf"
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
