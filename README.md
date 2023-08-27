@@ -18,8 +18,8 @@ I wrote this code for a DIY digital photo frame project using
 Raspberry Pi connected to a monitor (runs great on Pi Zero 2). The
 goal was to fetch photos directly from my Synology NAS over LAN.
 
-Why not use Synology Photos browser client directly? There are two
-reasons. First, current version of Synology Photos (1.3.3 at the time
+Why not use Synology Photos in a web browser directly? There are two
+reasons. First, current version of Synology Photos (1.5.0 at the time
 of writing) does not allow slideshow speed adjustments, and changes
 photo every 3 or 4 seconds - way too fast for a photo frame. Second,
 running a full www browser is much more resource demanding than a
