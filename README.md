@@ -11,15 +11,33 @@ fill.
 
 ![](doc/Slideshow.png "Extra space gets blurry background")
 
+- [Syno Photo Frame](#syno-photo-frame)
+  - [Why?](#why)
+    - [Security Disclaimer](#security-disclaimer)
+  - [Setup](#setup)
+    - [Synology Photos (NAS)](#synology-photos-nas)
+    - [Raspberry Pi](#raspberry-pi)
+      - [Install From Debian Package](#install-from-debian-package)
+        - [Debian 12 (bookworm)](#debian-12-bookworm)
+        - [Debian 11 (bullseye)](#debian-11-bullseye)
+      - [Alternative: Build From Source](#alternative-build-from-source)
+  - [Run](#run)
+  - [Optional Stuff](#optional-stuff)
+    - [Increase swap size on Raspberry Pi Zero](#increase-swap-size-on-raspberry-pi-zero)
+    - [Auto-start](#auto-start)
+    - [Startup-Shutdown Schedule](#startup-shutdown-schedule)
+    - [Start Slideshow From Random Photo and Random Order](#start-slideshow-from-random-photo-and-random-order)
+    - [Customize splash-screen](#customize-splash-screen)
+    - [Auto Brightness](#auto-brightness)
 
-## What?
+## Why?
 
-I wrote this code for a DIY digital photo frame project using
+I wrote this app for a DIY digital photo frame project using
 Raspberry Pi connected to a monitor (runs great on Pi Zero 2). The
 goal was to fetch photos directly from my Synology NAS over LAN.
 
 Why not use Synology Photos in a web browser directly? There are two
-reasons. First, current version of Synology Photos (1.5.0 at the time
+reasons. First, current version of Synology Photos (1.6.0 at the time
 of writing) does not allow slideshow speed adjustments, and changes
 photo every 3 or 4 seconds - way too fast for a photo frame. Second,
 running a full www browser is much more resource demanding than a
@@ -36,7 +54,9 @@ Internet, or if you're running this setup in an un-trusted LAN
 (e.g. in an office or a dorm).
 
 
-## Synology Photos Setup
+## Setup
+
+### Synology Photos (NAS)
 
 Assuming Synology Photos package is installed on DSM
 
@@ -54,14 +74,23 @@ Assuming Synology Photos package is installed on DSM
 ![Share Album](doc/ShareLink.png)
 
 
-## Raspberry Pi Setup
+### Raspberry Pi
 
 The assumption is that you are starting with a fresh installation of
 Raspberry Pi OS Lite, network has been set up (so you can access the
 Synology NAS) and you have command line access to the Pi.
 
 
-### 1. Install
+#### Install From Debian Package
+
+##### Debian 12 (bookworm)
+
+Support for newest Raspberry Pi OS based on Debian 12 (bookworm) is
+coming later. For now, if you use this version of the OS, use the
+[Build From Source](#build-from-source) method. The released .deb
+package does not work because of changed GCC and libsdl versions.
+
+##### Debian 11 (bullseye)
 
 Update the system
 
@@ -75,33 +104,19 @@ apt upgrade -y'
 contains pre-built .deb package for aarch64 Linux target, which should work
 on Raspberry Pi 3 and up, as well as Zero 2 (assuming 64bit version of
 Raspbian OS is installed). For other platforms you must build the
-project yourself - see [Building From Source](#building-from-source).
+project yourself - see [Build From Source](#build-from-source).
 
 Download the `syno-photo-frame_X.Y.Z_arm64.deb` package from Releases.
 
 `cd` to directory where the package has been downloaded and install
-with
+the app with
 
 ```
 sudo apt install ./syno-photo-frame_X.Y.Z_arm64.deb
 ```
 
-### 2. Run
 
-Display help message:
-```
-syno-photo-frame --help
-```
-
-Run the app:
-```
-syno-photo-frame {sharing link to Synology Photos album}
-```
-
-If everything works as expected, press Ctrl-C to kill the app.
-
-
-## Building From Source
+#### Alternative: Build From Source
 
 [Install Rust](https://www.rust-lang.org/tools/install) if you have
 not already.
@@ -130,6 +145,21 @@ cargo build --release
 ```
 
 The binary is then located at `target/release/syno-photo-frame`.
+
+
+## Run
+
+Display help message:
+```
+syno-photo-frame --help
+```
+
+Run the app:
+```
+syno-photo-frame {sharing link to Synology Photos album}
+```
+
+If everything works as expected, press Ctrl-C to kill the app.
 
 
 ## Optional Stuff
