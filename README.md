@@ -87,8 +87,9 @@ Synology NAS) and you have command line access to the Pi.
 
 Support for newest Raspberry Pi OS based on Debian 12 (bookworm) is
 coming later. For now, if you use this version of the OS, use the
-[Build From Source](#build-from-source) method. The released .deb
-package does not work because of changed GCC and libsdl versions.
+[Alternative: Build From Source](#alternative-build-from-source)
+method. The released .deb package does not work because of changed GCC
+and libsdl versions.
 
 ##### Debian 11 (bullseye)
 
@@ -101,10 +102,11 @@ apt upgrade -y'
 ```
 
 [Releases](https://github.com/Caleb9/syno-photo-frame/releases)
-contains pre-built .deb package for aarch64 Linux target, which should work
-on Raspberry Pi 3 and up, as well as Zero 2 (assuming 64bit version of
-Raspbian OS is installed). For other platforms you must build the
-project yourself - see [Build From Source](#build-from-source).
+contains pre-built .deb package for aarch64 Linux target, which should
+work on Raspberry Pi 3 and up, as well as Zero 2 (assuming 64bit
+version of Raspbian OS is installed). For other platforms you must
+build the project yourself - see [Alternative: Build From
+Source](#alternative-build-from-source).
 
 Download the `syno-photo-frame_X.Y.Z_arm64.deb` package from Releases.
 
