@@ -24,12 +24,19 @@ pub struct Cli {
     pub interval_seconds: u16,
 
     /// Slideshow ordering
-    #[arg(long, value_enum, default_value_t = Order::ByDate)]
+    #[arg(short = 'o', long, value_enum, default_value_t = Order::ByDate)]
     pub order: Order,
 
     /// Path to a JPEG file to display during startup, replacing the default splash-screen
     #[arg(long)]
     pub splash: Option<PathBuf>,
+
+    /// HTTP request timeout in seconds
+    ///
+    /// Must be greater or equal to 5. When Synology Photos does not respond within the timeout, an error is
+    /// displayed
+    #[arg(long = "timeout", default_value_t = 30, value_parser = clap::value_parser!(u16).range(5..))]
+    pub timeout_seconds: u16,
 }
 
 /// Slideshow ordering

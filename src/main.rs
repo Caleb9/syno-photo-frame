@@ -38,10 +38,9 @@ fn init_and_run() -> Result<(), String> {
 
     /* HTTP client */
     let cookie_store = Arc::new(reqwest::cookie::Jar::default());
-    const TIMEOUT: Duration = Duration::from_secs(20);
     let client = ClientBuilder::new()
         .cookie_provider(cookie_store.clone())
-        .timeout(TIMEOUT)
+        .timeout(Duration::from_secs(cli.timeout_seconds as u64))
         .build()
         .map_err_to_string()?;
 
