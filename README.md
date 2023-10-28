@@ -40,9 +40,9 @@ Why not use Synology Photos in a web browser directly? There are two
 reasons. First, current version of Synology Photos (1.6.0 at the time
 of writing) does not allow slideshow speed adjustments, and changes
 photo every 3 or 4 seconds - way too fast for a photo frame. Second,
-running a full www browser is much more resource demanding than a
-simple console app, which matters when using Raspberry Pi, especially
-in its Zero variant.
+running a full www browser is more resource demanding than a simple
+static image app, which matters when using Raspberry Pi, especially in
+the Zero variant.
 
 
 ### Security Disclaimer

@@ -126,13 +126,14 @@ fn load_photo_from_thread_or_error_screen(
     get_photo_thread: ScopedJoinHandle<'_, Result<DynamicImage, String>>,
     sdl: &mut impl Sdl,
 ) -> Result<(), String> {
-    match get_photo_thread.join().unwrap() {
-        Ok(photo) => sdl.update_texture(photo.as_bytes()),
+    let photo_or_error = match get_photo_thread.join().unwrap() {
+        Ok(photo) => photo,
         Err(error) => {
             log::error!("{error}");
-            sdl.update_texture(asset::error_image(sdl.size())?.as_bytes())
+            asset::error_image(sdl.size())?
         }
-    }
+    };
+    sdl.update_texture(photo_or_error.as_bytes())
 }
 
 fn slideshow_loop(
