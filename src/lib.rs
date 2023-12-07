@@ -158,10 +158,10 @@ fn slideshow_loop(
             if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
                 Transition::Out.play(sdl)?;
                 load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
-                next_photo_thread =
-                    get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
                 Transition::In.play(sdl)?;
                 last_change = Instant::now();
+                next_photo_thread =
+                    get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
             } else {
                 /* Avoid maxing out CPU */
                 const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
