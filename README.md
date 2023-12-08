@@ -18,8 +18,6 @@ fill.
     - [Synology Photos (NAS)](#synology-photos-nas)
     - [Raspberry Pi](#raspberry-pi)
       - [Install From Debian Package](#install-from-debian-package)
-        - [Debian 12 (bookworm)](#debian-12-bookworm)
-        - [Debian 11 (bullseye)](#debian-11-bullseye)
       - [Alternative: Build From Source](#alternative-build-from-source)
   - [Run](#run)
   - [Optional Stuff](#optional-stuff)
@@ -37,7 +35,7 @@ Raspberry Pi connected to a monitor (runs great on Pi Zero 2). The
 goal was to fetch photos directly from my Synology NAS over LAN.
 
 Why not use Synology Photos in a web browser directly? There are two
-reasons. First, current version of Synology Photos (1.6.0 at the time
+reasons. First, current version of Synology Photos (1.6.1 at the time
 of writing) does not allow slideshow speed adjustments, and changes
 photo every 3 or 4 seconds - way too fast for a photo frame. Second,
 running a full www browser is more resource demanding than a simple
@@ -83,16 +81,6 @@ Synology NAS) and you have command line access to the Pi.
 
 #### Install From Debian Package
 
-##### Debian 12 (bookworm)
-
-Support for newest Raspberry Pi OS based on Debian 12 (bookworm) is
-coming later. For now, if you use this version of the OS, use the
-[Alternative: Build From Source](#alternative-build-from-source)
-method. The released .deb package does not work because of changed GCC
-and libsdl versions.
-
-##### Debian 11 (bullseye)
-
 Update the system
 
 ```
@@ -102,19 +90,23 @@ apt upgrade -y'
 ```
 
 [Releases](https://github.com/Caleb9/syno-photo-frame/releases)
-contains pre-built .deb package for aarch64 Linux target, which should
-work on Raspberry Pi 3 and up, as well as Zero 2 (assuming 64bit
-version of Raspbian OS is installed). For other platforms you must
-build the project yourself - see [Alternative: Build From
+contains pre-built .deb packages for aarch64 Linux target, which
+should work on Raspberry Pi 3 and up, as well as Zero 2 (assuming
+64bit version of Raspbian OS is installed). For other platforms you
+must build the project yourself - see [Alternative: Build From
 Source](#alternative-build-from-source).
 
-Download the `syno-photo-frame_X.Y.Z_arm64.deb` package from Releases.
+Check the installed version of Debian with `lsb_release -c` and
+download appropriate
+`syno-photo-frame_X.Y.Z_arm64_{debian_codename}.deb` package from
+Releases. Note that currently the only available packages are for
+Debian 11 ("bullseye") and 12 ("bookworm").
 
 `cd` to directory where the package has been downloaded and install
-the app with
+the app (adjust the filename appropriately):
 
 ```
-sudo apt install ./syno-photo-frame_X.Y.Z_arm64.deb
+sudo apt install ./syno-photo-frame_0.7.0_arm64_bookworm.deb
 ```
 
 
