@@ -44,7 +44,9 @@ pub fn run(
     random: Random,
 ) -> Result<(), String> {
     let slideshow = Arc::new(Mutex::new(
-        Slideshow::try_from(&cli.share_link)?.with_ordering(cli.order),
+        Slideshow::try_from(&cli.share_link)?
+            .with_ordering(cli.order)
+            .with_source_size(cli.source_size),
     ));
 
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);

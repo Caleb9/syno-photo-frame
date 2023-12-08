@@ -37,6 +37,11 @@ pub struct Cli {
     /// displayed
     #[arg(long = "timeout", default_value_t = 30, value_parser = clap::value_parser!(u16).range(5..))]
     pub timeout_seconds: u16,
+
+    /// Size of the photo as fetched from the Synology Photos. Can reduce network and CPU utilization at the
+    /// cost of image quality
+    #[arg(long, value_enum, default_value_t = SourceSize::L)]
+    pub source_size: SourceSize,
 }
 
 /// Slideshow ordering
@@ -48,6 +53,17 @@ pub enum Order {
     RandomStart,
     /// in random order
     Random,
+}
+
+/// Size of source photo to fetch
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum SourceSize {
+    /// small (360x240)
+    S,
+    /// medium (481x320)
+    M,
+    /// large (1922x1280)
+    L,
 }
 
 #[test]

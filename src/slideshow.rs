@@ -4,7 +4,7 @@ use bytes::Bytes;
 
 use crate::{
     api::{self, dto::Album, PhotosApiError, SharingId},
-    cli::Order,
+    cli::{Order, SourceSize},
     http::{Client, CookieStore, StatusCode, Url},
     ErrorToString, Random,
 };
@@ -17,6 +17,7 @@ pub(crate) struct Slideshow {
     /// Indices of photos in an album in reverse order (so we can pop them off easily)
     photo_display_sequence: Vec<u32>,
     order: Order,
+    source_size: SourceSize,
 }
 
 impl TryFrom<&Url> for Slideshow {
@@ -30,6 +31,7 @@ impl TryFrom<&Url> for Slideshow {
             sharing_id,
             photo_display_sequence: vec![],
             order: Order::ByDate,
+            source_size: SourceSize::L,
         })
     }
 }
@@ -37,6 +39,11 @@ impl TryFrom<&Url> for Slideshow {
 impl Slideshow {
     pub(crate) fn with_ordering(mut self, order: Order) -> Self {
         self.order = order;
+        self
+    }
+
+    pub(crate) fn with_source_size(mut self, size: SourceSize) -> Self {
+        self.source_size = size;
         self
     }
 
@@ -71,7 +78,11 @@ impl Slideshow {
                 client,
                 &self.api_url,
                 &self.sharing_id,
-                (photo.id, &photo.additional.thumbnail.cache_key),
+                (
+                    photo.id,
+                    &photo.additional.thumbnail.cache_key,
+                    self.source_size,
+                ),
             ) {
                 Ok(photo_bytes) => Ok(photo_bytes),
                 Err(PhotosApiError::InvalidHttpResponse(StatusCode::NOT_FOUND)) => {
@@ -202,6 +213,7 @@ mod tests {
                         &FIRST_PHOTO_ID.to_string(),
                         "FakeSharingId",
                         FIRST_PHOTO_CACHE_KEY,
+                        "xl",
                     )
             })
             .return_once(|_, _| {
@@ -273,6 +285,7 @@ mod tests {
                     &RANDOM_PHOTO_ID.to_string(),
                     "FakeSharingId",
                     RANDOM_PHOTO_CACHE_KEY,
+                    "xl",
                 )
             })
             .return_once(|_, _| {
@@ -298,6 +311,69 @@ mod tests {
         /* Assert */
         assert!(result.is_ok());
         client_mock.checkpoint();
+    }
+
+    #[test]
+    fn when_source_size_specified_then_get_next_photo_fetches_photo_of_specific_size() {
+        test_case(SourceSize::S, "sm");
+        test_case(SourceSize::M, "m");
+        test_case(SourceSize::L, "xl");
+
+        fn test_case(source_size: SourceSize, expected_size_param: &'static str) {
+            /* Arrange */
+            const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
+            let mut slideshow = new_slideshow(SHARE_LINK).with_source_size(source_size);
+            let mut client_mock = MockClient::new();
+            client_mock
+                .expect_post()
+                .withf(|_, form, _| is_login_form(&form, "FakeSharingId"))
+                .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
+            const PHOTO_COUNT: u32 = 142;
+            client_mock
+                .expect_post()
+                .withf(|_, form, _| is_get_count_form(&form))
+                .return_once(|_, _, _| {
+                    Ok(test_helpers::new_response_with_json(dto::List {
+                        list: vec![dto::Album {
+                            item_count: PHOTO_COUNT,
+                        }],
+                    }))
+                });
+            client_mock
+                .expect_post()
+                .withf(|_, form, _| is_list_form(&form, "0", "1"))
+                .return_once(|_, _, _| {
+                    Ok(test_helpers::new_response_with_json(dto::List {
+                        list: vec![test_helpers::new_photo_dto(43, "photo43")],
+                    }))
+                });
+            client_mock
+                .expect_get()
+                .withf(move |_, query| {
+                    is_get_photo_query(
+                        &query,
+                        "43",
+                        "FakeSharingId",
+                        "photo43",
+                        &expected_size_param,
+                    )
+                })
+                .return_once(|_, _| {
+                    let mut get_photo_response = test_helpers::new_success_response();
+                    get_photo_response
+                        .expect_bytes()
+                        .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
+                    Ok(get_photo_response)
+                });
+            let cookie_store = Arc::new(Jar::default()) as Arc<dyn CookieStore>;
+
+            /* Act */
+            let result = slideshow.get_next_photo((&client_mock, &cookie_store), DUMMY_RANDOM);
+
+            /* Assert */
+            assert!(result.is_ok());
+            client_mock.checkpoint();
+        }
     }
 
     #[test]
@@ -335,6 +411,7 @@ mod tests {
                         &NEXT_PHOTO_ID.to_string(),
                         "FakeSharingId",
                         &NEXT_PHOTO_CACHE_KEY,
+                        "xl",
                     )
             })
             .return_once(|_, _| {
@@ -388,6 +465,7 @@ mod tests {
                     &NEXT_PHOTO_ID.to_string(),
                     "FakeSharingId",
                     NEXT_PHOTO_CACHE_KEY,
+                    "xl",
                 )
             })
             .return_once(|_, _| {
@@ -415,6 +493,7 @@ mod tests {
                     &NEXT_NEXT_PHOTO_ID.to_string(),
                     "FakeSharingId",
                     NEXT_NEXT_PHOTO_CACHE_KEY,
+                    "xl",
                 )
             })
             .return_once(|_, _| {
@@ -468,7 +547,7 @@ mod tests {
             });
         client_mock
             .expect_get()
-            .withf(|_, query| is_get_photo_query(&query, "4", "FakeSharingId", "photo4"))
+            .withf(|_, query| is_get_photo_query(&query, "4", "FakeSharingId", "photo4", "xl"))
             .return_once(|_, _| {
                 let mut get_photo_response = test_helpers::new_success_response();
                 get_photo_response
@@ -550,6 +629,7 @@ mod tests {
                     &FIRST_PHOTO_ID.to_string(),
                     "FakeSharingId",
                     FIRST_PHOTO_CACHE_KEY,
+                    "xl",
                 )
             })
             .return_once(|_, _| {
@@ -616,6 +696,7 @@ mod tests {
         id: &str,
         sharing_id: &str,
         cache_key: &str,
+        size: &str,
     ) -> bool {
         query.eq(&[
             ("api", "SYNO.Foto.Thumbnail"),
@@ -625,7 +706,7 @@ mod tests {
             ("id", id),
             ("cache_key", cache_key),
             ("type", "unit"),
-            ("size", "xl"),
+            ("size", size),
         ])
     }
 

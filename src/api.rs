@@ -4,6 +4,7 @@ use bytes::Bytes;
 use regex::Regex;
 
 use crate::{
+    cli::SourceSize,
     http::{Client, Response, StatusCode, Url},
     ErrorToString,
 };
@@ -143,8 +144,13 @@ pub(crate) fn get_photo(
     client: &impl Client,
     api_url: &Url,
     sharing_id: &SharingId,
-    (photo_id, photo_cache_key): (i32, &str),
+    (photo_id, photo_cache_key, source_size): (i32, &str, SourceSize),
 ) -> Result<Bytes, PhotosApiError> {
+    let size = match source_size {
+        SourceSize::S => "sm",
+        SourceSize::M => "m",
+        SourceSize::L => "xl",
+    };
     let params = [
         ("api", "SYNO.Foto.Thumbnail"),
         ("method", "get"),
@@ -153,7 +159,7 @@ pub(crate) fn get_photo(
         ("id", &photo_id.to_string()),
         ("cache_key", photo_cache_key),
         ("type", "unit"),
-        ("size", "xl"),
+        ("size", size),
     ];
     let response = client.get(api_url.as_str(), &params)?;
     read_response(response, |response| {
