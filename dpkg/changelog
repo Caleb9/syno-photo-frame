@@ -1,3 +1,16 @@
+syno-photo-frame (0.7.0) stable; urgency=low
+  [Piotr Karasinski ]
+  * Add `--source-size`option
+
+ -- Piotr-Karasinski <7767011+Caleb9@users.noreply.github.com>  Fri, 8 Dec 2023 12:00:00 +0200
+
+syno-photo-frame (0.6.0) stable; urgency=low
+  [Piotr Karasinski ]
+  * Add `--timeout`option
+  * Add short `-o` option for `--order`
+
+ -- Piotr-Karasinski <7767011+Caleb9@users.noreply.github.com>  Wed, 25 Oct 2023 12:00:00 +0200
+
 syno-photo-frame (0.5.2) stable; urgency=low
   [Piotr Karasinski ]
   * Fix package dependencies
