@@ -27,6 +27,10 @@ pub struct Cli {
     #[arg(short = 'o', long, value_enum, default_value_t = Order::ByDate)]
     pub order: Order,
 
+    /// Transition effect
+    #[arg(short = 't', long, value_enum, default_value_t = Transition::Crossfade)]
+    pub transition: Transition,
+
     /// Path to a JPEG file to display during startup, replacing the default splash-screen
     #[arg(long)]
     pub splash: Option<PathBuf>,
@@ -53,6 +57,17 @@ pub enum Order {
     RandomStart,
     /// in random order
     Random,
+}
+
+/// Transition to next photo effect
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum Transition {
+    /// Crossfade (or cross dissolve)
+    Crossfade,
+    /// Fade out to black and in to next photo
+    FadeToBlack,
+    /// Disable transition effect
+    None,
 }
 
 /// Size of source photo to fetch

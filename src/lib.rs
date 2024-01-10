@@ -11,12 +11,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use cli::Cli;
+use cli::{Cli, Transition};
 use http::{Client, CookieStore};
 use img::{DynamicImage, Framed};
-use sdl::{Event, Sdl};
+use sdl::{Event, Sdl, TextureIndex};
 use slideshow::Slideshow;
-use transition::Transition;
 
 pub mod cli;
 pub mod http;
@@ -68,10 +67,19 @@ pub fn run(
         }
         load_photo_from_thread_or_error_screen(first_photo_thread, sdl)
     })?;
-    Transition::In.play(sdl)?;
+    cli.transition.play(sdl)?;
+    sdl.swap_textures();
 
     /* Continue indefinitely */
-    slideshow_loop(http, sdl, &slideshow, photo_change_interval, sleep, random)
+    slideshow_loop(
+        http,
+        sdl,
+        &slideshow,
+        photo_change_interval,
+        cli.transition,
+        sleep,
+        random,
+    )
 }
 
 fn show_welcome_screen(sdl: &mut impl Sdl, custom_splash: &Option<PathBuf>) -> Result<(), String> {
@@ -88,8 +96,8 @@ fn show_welcome_screen(sdl: &mut impl Sdl, custom_splash: &Option<PathBuf>) -> R
             }
         }
     };
-    sdl.update_texture(welcome_img.as_bytes())?;
-    sdl.copy_texture_to_canvas()?;
+    sdl.update_texture(welcome_img.as_bytes(), TextureIndex::Current)?;
+    sdl.copy_texture_to_canvas(TextureIndex::Current)?;
     sdl.present_canvas();
     Ok(())
 }
@@ -135,7 +143,7 @@ fn load_photo_from_thread_or_error_screen(
             asset::error_image(sdl.size())?
         }
     };
-    sdl.update_texture(photo_or_error.as_bytes())
+    sdl.update_texture(photo_or_error.as_bytes(), TextureIndex::Next)
 }
 
 fn slideshow_loop(
@@ -143,6 +151,7 @@ fn slideshow_loop(
     sdl: &mut impl Sdl,
     slideshow: &Arc<Mutex<Slideshow>>,
     photo_change_interval: Duration,
+    transition: Transition,
     sleep: fn(Duration),
     random: Random,
 ) -> Result<(), String> {
@@ -158,12 +167,12 @@ fn slideshow_loop(
             let next_photo_is_ready = next_photo_thread.is_finished();
             let elapsed_display_duration = Instant::now() - last_change;
             if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
-                Transition::Out.play(sdl)?;
                 load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
-                Transition::In.play(sdl)?;
+                transition.play(sdl)?;
                 last_change = Instant::now();
                 next_photo_thread =
                     get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
+                sdl.swap_textures();
             } else {
                 /* Avoid maxing out CPU */
                 const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);

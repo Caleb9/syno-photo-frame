@@ -49,9 +49,12 @@ fn init_and_run() -> Result<(), String> {
     let display_size = sdl::display_size(&video)?;
     let canvas = sdl::create_canvas(&video, display_size)?;
     let texture_creator = canvas.texture_creator();
-    let texture = sdl::create_texture(&texture_creator, display_size)?;
+    let textures = [
+        sdl::create_texture(&texture_creator, display_size)?,
+        sdl::create_texture(&texture_creator, display_size)?,
+    ];
     let events = video.sdl().event_pump()?;
-    let mut sdl = SdlWrapper::new(canvas, texture, events);
+    let mut sdl = SdlWrapper::new(canvas, textures, events);
 
     /* Random */
     let random: Random = (

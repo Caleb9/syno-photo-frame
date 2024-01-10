@@ -6,8 +6,7 @@ full-screen slideshow for Raspberry Pi.
 
 ![](doc/syno-photo-frame.png)
 
-Features speed control, fade-transition effect and blurry background
-fill.
+Features speed control, transition effects and blurry background fill.
 
 ![](doc/Slideshow.png "Extra space gets blurry background")
 
@@ -31,8 +30,9 @@ fill.
 ## Why?
 
 I wrote this app for a DIY digital photo frame project using
-Raspberry Pi connected to a monitor (runs great on Pi Zero 2). The
-goal was to fetch photos directly from my Synology NAS over LAN.
+[Raspberry Pi](https://www.raspberrypi.com/) connected to a monitor
+(runs great on Pi Zero 2). The goal was to fetch photos directly from
+my Synology NAS over LAN.
 
 Why not use Synology Photos in a web browser directly? There are two
 reasons. First, current version of Synology Photos (1.6.1 at the time
@@ -58,8 +58,9 @@ Internet, or if you're running this setup in an un-trusted LAN
 
 Assuming Synology Photos package is installed on DSM
 
-1. Create an album in Synology Photos and add photos to it
-2. Click "Share" icon in the Album
+1. Create an __album__ in Synology Photos and add photos to it (note
+   the distinction between an "album" and a "folder")
+2. Click "Share" icon in the album
 3. Check "Enable share link" option
 4. Set Privacy Settings to "Public - Anyone with the link can view"
 5. Do NOT enable Link Protection - support for password protection
@@ -207,6 +208,13 @@ startup schedule will start at a different photo every time.
 
 Alternatively use `--order random` to display photos in completely
 random order.
+
+
+### Change Transition Effect
+
+Use the `--transition` (or `-t`) option to select type of transition
+effect for changing photos. Use `--help` option to display valid
+values.
 
 
 ### Customize splash-screen

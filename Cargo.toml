@@ -1,6 +1,6 @@
 [package]
 name = "syno-photo-frame"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 description = "Full-screen slideshow for Synology Photos albums"
 license = "GPL-3.0-or-later"
@@ -38,4 +38,4 @@ simple_logger = "4.*"
 
 [dev-dependencies]
 mock_instant = "0.3.*"
-mockall = "0.11.*"
+mockall = "0.12.*"
