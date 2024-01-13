@@ -15,12 +15,16 @@ const FADE_TO_BLACK_DURATION_SECS: f64 = 2_f64;
 const CROSSFADE_DURATION_SECS: f64 = 1_f64;
 
 impl Transition {
-    pub(crate) fn play(&self, sdl: &mut impl Sdl) -> Result<(), String> {
+    pub(crate) fn play(
+        &self,
+        sdl: &mut impl Sdl,
+        show_update_notification: bool,
+    ) -> Result<(), String> {
         match self {
-            Transition::Crossfade => self.crossfade(sdl),
+            Transition::Crossfade => self.crossfade(sdl, show_update_notification),
             Transition::FadeToBlack => {
-                if !self.fade_to_black(sdl, FadeToBlackPhase::Out)?
-                    || !self.fade_to_black(sdl, FadeToBlackPhase::In)?
+                if !self.fade_to_black(sdl, FadeToBlackPhase::Out, show_update_notification)?
+                    || !self.fade_to_black(sdl, FadeToBlackPhase::In, show_update_notification)?
                 {
                     return Ok(());
                 }
@@ -28,13 +32,16 @@ impl Transition {
             }
             Transition::None => {
                 sdl.copy_texture_to_canvas(TextureIndex::Next)?;
+                if show_update_notification {
+                    sdl.copy_update_notification_to_canvas()?;
+                }
                 sdl.present_canvas();
                 Ok(())
             }
         }
     }
 
-    fn crossfade(&self, sdl: &mut impl Sdl) -> Result<(), String> {
+    fn crossfade(&self, sdl: &mut impl Sdl, show_update_notification: bool) -> Result<(), String> {
         let mut delta;
         let mut alpha = TRANSITION_ALPHA_MIN;
         let mut last = Instant::now();
@@ -49,13 +56,21 @@ impl Transition {
             alpha += delta * DIFF;
             sdl.set_texture_alpha(alpha.round() as u8, TextureIndex::Next);
             sdl.copy_texture_to_canvas(TextureIndex::Next)?;
+            if show_update_notification {
+                sdl.copy_update_notification_to_canvas()?;
+            }
             sdl.present_canvas();
         }
         Ok(())
     }
 
     /// Returns false if exit event occurred
-    fn fade_to_black(&self, sdl: &mut impl Sdl, phase: FadeToBlackPhase) -> Result<bool, String> {
+    fn fade_to_black(
+        &self,
+        sdl: &mut impl Sdl,
+        phase: FadeToBlackPhase,
+        show_update_notification: bool,
+    ) -> Result<bool, String> {
         let mut delta;
         let mut alpha = phase.init_alpha();
         let mut last = Instant::now();
@@ -68,6 +83,9 @@ impl Transition {
             alpha += phase.step_alpha(delta);
             sdl.copy_texture_to_canvas(phase.texture_index())?;
             sdl.fill_canvas(Color::RGBA(0, 0, 0, alpha.round() as u8))?;
+            if show_update_notification {
+                sdl.copy_update_notification_to_canvas()?;
+            }
             sdl.present_canvas();
         }
         Ok(true)
@@ -144,6 +162,10 @@ mod tests {
                 .once()
                 .in_sequence(&mut canvas_seq)
                 .return_const(Ok(()));
+            sdl.expect_copy_update_notification_to_canvas()
+                .once()
+                .in_sequence(&mut canvas_seq)
+                .return_const(Ok(()));
             sdl.expect_present_canvas()
                     .once()
                     .in_sequence(&mut canvas_seq)
@@ -163,6 +185,10 @@ mod tests {
                 .once()
                 .in_sequence(&mut canvas_seq)
                 .return_const(Ok(()));
+            sdl.expect_copy_update_notification_to_canvas()
+                .once()
+                .in_sequence(&mut canvas_seq)
+                .return_const(Ok(()));
             sdl.expect_present_canvas()
                     .once()
                     .in_sequence(&mut canvas_seq)
@@ -173,7 +199,7 @@ mod tests {
                     });
         }
 
-        let result = Transition::FadeToBlack.play(&mut sdl);
+        let result = Transition::FadeToBlack.play(&mut sdl, true);
 
         assert!(result.is_ok());
         sdl.checkpoint();
@@ -205,6 +231,10 @@ mod tests {
                 .once()
                 .in_sequence(&mut canvas_seq)
                 .return_const(Ok(()));
+            sdl.expect_copy_update_notification_to_canvas()
+                .once()
+                .in_sequence(&mut canvas_seq)
+                .return_const(Ok(()));
             sdl.expect_present_canvas()
                 .once()
                 .in_sequence(&mut canvas_seq)
@@ -215,7 +245,7 @@ mod tests {
                 });
         }
 
-        let result = Transition::Crossfade.play(&mut sdl);
+        let result = Transition::Crossfade.play(&mut sdl, true);
 
         assert!(result.is_ok());
         sdl.checkpoint();
@@ -236,7 +266,7 @@ mod tests {
                 .returning(move || MockClock::advance(frame_duration));
             reset_clock();
 
-            Transition::FadeToBlack.play(&mut sdl).unwrap();
+            Transition::FadeToBlack.play(&mut sdl, false).unwrap();
 
             let fade_duration = MockClock::time();
             assert_eq!(fade_duration.as_secs(), 2);
@@ -258,7 +288,7 @@ mod tests {
                 .returning(move || MockClock::advance(frame_duration));
             reset_clock();
 
-            Transition::Crossfade.play(&mut sdl).unwrap();
+            Transition::Crossfade.play(&mut sdl, false).unwrap();
 
             let fade_duration = MockClock::time();
             assert_eq!(fade_duration.as_secs(), 1);
@@ -296,7 +326,7 @@ mod tests {
         sdl.expect_present_canvas()
             .returning(move || MockClock::advance(frame_duration));
 
-        Transition::FadeToBlack.play(&mut sdl).unwrap();
+        Transition::FadeToBlack.play(&mut sdl, false).unwrap();
 
         sdl.checkpoint();
     }
@@ -332,9 +362,39 @@ mod tests {
         sdl.expect_present_canvas()
             .returning(move || MockClock::advance(frame_duration));
 
-        Transition::Crossfade.play(&mut sdl).unwrap();
+        Transition::Crossfade.play(&mut sdl, false).unwrap();
 
         sdl.checkpoint();
+    }
+
+    #[test]
+    fn transition_play_does_not_copy_update_notification_to_canvas_when_show_update_notification_is_false(
+    ) {
+        test_case(Transition::Crossfade);
+        test_case(Transition::FadeToBlack);
+        test_case(Transition::None);
+
+        fn test_case(sut: Transition) {
+            let mut sdl = MockSdl::default();
+            sdl.expect_events().returning(|| Box::new([].into_iter()));
+            sdl.expect_set_texture_alpha().return_const(());
+            sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
+            sdl.expect_fill_canvas().return_const(Ok(()));
+            sdl.expect_copy_update_notification_to_canvas()
+                .never()
+                .return_const(Ok(()));
+            const FPS: f64 = 30_f64;
+            let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
+            sdl.expect_present_canvas()
+                .returning(move || MockClock::advance(frame_duration));
+            reset_clock();
+            const SHOW_UPDATE_NOTIFICATION: bool = false;
+
+            let result = sut.play(&mut sdl, SHOW_UPDATE_NOTIFICATION);
+
+            assert!(result.is_ok());
+            sdl.checkpoint();
+        }
     }
 
     #[test]
@@ -359,7 +419,7 @@ mod tests {
                 .returning(move || MockClock::advance(frame_duration));
             reset_clock();
 
-            let result = sut.play(&mut sdl);
+            let result = sut.play(&mut sdl, false);
 
             assert!(result.is_ok());
             sdl.checkpoint();

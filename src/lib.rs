@@ -22,7 +22,8 @@ pub mod http;
 pub mod logging;
 pub mod sdl;
 
-mod api;
+mod api_crates;
+mod api_photos;
 mod asset;
 mod img;
 mod slideshow;
@@ -41,6 +42,7 @@ pub fn run(
     sdl: &mut impl Sdl,
     sleep: fn(Duration),
     random: Random,
+    installed_version: &str,
 ) -> Result<(), String> {
     let slideshow = Arc::new(Mutex::new(
         Slideshow::try_from(&cli.share_link)?
@@ -50,12 +52,18 @@ pub fn run(
 
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
 
+    let mut show_update_notification = false;
     /* Initialize slideshow by getting the first photo and starting with fade-in */
     thread::scope::<'_, _, Result<(), String>>(|thread_scope| {
+        show_welcome_screen(sdl, &cli.splash)?;
         let first_photo_thread =
             get_next_photo_thread(&slideshow, http, sdl.size(), random, thread_scope);
-
-        show_welcome_screen(sdl, &cli.splash)?;
+        let check_for_updates_thread = is_update_available(
+            http.0,
+            installed_version,
+            thread_scope,
+            cli.disable_update_check,
+        );
 
         while !first_photo_thread.is_finished() {
             if is_exit_requested(sdl) {
@@ -65,9 +73,10 @@ pub fn run(
             const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
             sleep(LOOP_SLEEP_DURATION);
         }
+        show_update_notification = check_for_updates_thread.join().unwrap();
         load_photo_from_thread_or_error_screen(first_photo_thread, sdl)
     })?;
-    cli.transition.play(sdl)?;
+    cli.transition.play(sdl, show_update_notification)?;
     sdl.swap_textures();
 
     /* Continue indefinitely */
@@ -75,8 +84,11 @@ pub fn run(
         http,
         sdl,
         &slideshow,
-        photo_change_interval,
-        cli.transition,
+        (
+            photo_change_interval,
+            cli.transition,
+            show_update_notification,
+        ),
         sleep,
         random,
     )
@@ -150,8 +162,7 @@ fn slideshow_loop(
     http: (&impl Client, &Arc<dyn CookieStore>),
     sdl: &mut impl Sdl,
     slideshow: &Arc<Mutex<Slideshow>>,
-    photo_change_interval: Duration,
-    transition: Transition,
+    (photo_change_interval, transition, show_update_notification): (Duration, Transition, bool),
     sleep: fn(Duration),
     random: Random,
 ) -> Result<(), String> {
@@ -168,11 +179,11 @@ fn slideshow_loop(
             let elapsed_display_duration = Instant::now() - last_change;
             if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
                 load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
-                transition.play(sdl)?;
+                transition.play(sdl, show_update_notification)?;
                 last_change = Instant::now();
+                sdl.swap_textures();
                 next_photo_thread =
                     get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
-                sdl.swap_textures();
             } else {
                 /* Avoid maxing out CPU */
                 const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
@@ -180,6 +191,34 @@ fn slideshow_loop(
             }
         }
         Ok(())
+    })
+}
+
+fn is_update_available<'a>(
+    client: &'a impl Client,
+    installed_version: &'a str,
+    thread_scope: &'a Scope<'a, '_>,
+    skip_check: bool,
+) -> ScopedJoinHandle<'a, bool> {
+    let client = client.clone();
+    thread_scope.spawn(move || {
+        if !skip_check {
+            match api_crates::get_latest_version(&client) {
+                Ok(remote_crate) => {
+                    if remote_crate.vers != installed_version {
+                        log::info!(
+                            "New version is available ({installed_version} -> {})",
+                            remote_crate.vers
+                        );
+                        return true;
+                    }
+                }
+                Err(error) => {
+                    log::error!("Check for updates: {error}");
+                }
+            };
+        }
+        false
     })
 }
 

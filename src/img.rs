@@ -41,8 +41,11 @@ fn internal_fit_to_screen_and_add_background(
     let foreground_dimensions = original_dimensions.resize(screen_dimensions);
 
     if foreground_dimensions.is_exact_fit_to(screen_dimensions) {
-        /* image fits perfectly, background not needed */
-        return original.resize(xres, yres, FilterType::Lanczos3);
+        /* Image fits perfectly, background not needed. Note that this may still stretch the image
+         * by one pixel horizontally or vertically to make a perfect fit when resized dimensions
+         * are off by a fraction. This however is visually unnoticeable, while necessary for the bytes
+         * array to match length of the texture buffer and avoid a panic when copying data to it. */
+        return original.resize_exact(xres, yres, FilterType::Lanczos3);
     }
 
     let (bg_thread1, bg_thread2) =
@@ -259,8 +262,8 @@ mod tests {
     #[test]
     fn when_larger_image_fits_perfectly_then_background_is_not_created() {
         let pixel = Rgba([1, 2, 3, 255]);
-        let original = create_test_image((120, 80), pixel);
-        let screen = (60, 40);
+        let original = create_test_image((759, 426), pixel);
+        let screen = (640, 360);
 
         let result = internal_fit_to_screen_and_add_background(
             &original,
@@ -268,7 +271,7 @@ mod tests {
             panicking_brighten_and_blur_stub,
         );
 
-        assert_eq!(result.pixels().count(), 60 * 40);
+        assert_eq!(result.pixels().count(), 640 * 360);
         assert!(result.pixels().all(|(_, _, p)| p == pixel));
     }
 

@@ -34,6 +34,8 @@ pub trait Response {
     fn json<T: DeserializeOwned + 'static>(self) -> Result<T, String>;
 
     fn bytes(self) -> Result<Bytes, String>;
+
+    fn text(self) -> Result<String, String>;
 }
 
 /// Wrapper for [reqwest::blocking::Client]
@@ -96,5 +98,9 @@ impl Response for ReqwestResponse {
 
     fn bytes(self) -> Result<Bytes, String> {
         self.response.bytes().map_err_to_string()
+    }
+
+    fn text(self) -> Result<String, String> {
+        self.response.text().map_err_to_string()
     }
 }

@@ -24,6 +24,7 @@ Features speed control, transition effects and blurry background fill.
     - [Auto-start](#auto-start)
     - [Startup-Shutdown Schedule](#startup-shutdown-schedule)
     - [Start Slideshow From Random Photo and Random Order](#start-slideshow-from-random-photo-and-random-order)
+    - [Change Transition Effect](#change-transition-effect)
     - [Customize splash-screen](#customize-splash-screen)
     - [Auto Brightness](#auto-brightness)
 
@@ -123,6 +124,7 @@ apt update && \
 apt upgrade -y && \
 apt install -y \
 	libsdl2-dev \
+	libsdl2-ttf-dev \
 	libssl-dev'
 ```
 

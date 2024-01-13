@@ -54,13 +54,19 @@ fn init_and_run() -> Result<(), String> {
         sdl::create_texture(&texture_creator, display_size)?,
     ];
     let events = video.sdl().event_pump()?;
-    let mut sdl = SdlWrapper::new(canvas, textures, events);
+    let ttf = sdl::init_ttf()?;
+    let update_notification_texture =
+        sdl::create_update_notification_texture(&ttf, &texture_creator)?;
+    let mut sdl = SdlWrapper::new(canvas, textures, update_notification_texture, events);
 
     /* Random */
     let random: Random = (
         |range| rand::thread_rng().gen_range(range),
         |slice| slice.shuffle(&mut rand::thread_rng()),
     );
+
+    /* This crate version */
+    let installed_version = env!("CARGO_PKG_VERSION");
 
     syno_photo_frame::run(
         &cli,
@@ -71,6 +77,7 @@ fn init_and_run() -> Result<(), String> {
         &mut sdl,
         thread::sleep,
         random,
+        installed_version,
     )?;
 
     Ok(())

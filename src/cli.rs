@@ -38,7 +38,7 @@ pub struct Cli {
     /// HTTP request timeout in seconds
     ///
     /// Must be greater or equal to 5. When Synology Photos does not respond within the timeout, an error is
-    /// displayed
+    /// displayed. Try to increase the value for slow connections
     #[arg(long = "timeout", default_value_t = 30, value_parser = clap::value_parser!(u16).range(5..))]
     pub timeout_seconds: u16,
 
@@ -46,6 +46,10 @@ pub struct Cli {
     /// cost of image quality
     #[arg(long, value_enum, default_value_t = SourceSize::L)]
     pub source_size: SourceSize,
+
+    /// Disable checking for updates during startup
+    #[arg(long, default_value_t = false)]
+    pub disable_update_check: bool,
 }
 
 /// Slideshow ordering

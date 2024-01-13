@@ -4,7 +4,7 @@ use mockall::mock;
 use serde::de::DeserializeOwned;
 
 use crate::{
-    api::dto,
+    api_photos::dto,
     http::{Client, CookieStore, Jar, MockResponse, StatusCode, Url},
 };
 

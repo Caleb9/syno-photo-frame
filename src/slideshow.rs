@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 
 use crate::{
-    api::{self, dto::Album, PhotosApiError, SharingId},
+    api_photos::{self, dto::Album, PhotosApiError, SharingId},
     cli::{Order, SourceSize},
     http::{Client, CookieStore, StatusCode, Url},
     ErrorToString, Random,
@@ -24,7 +24,7 @@ impl TryFrom<&Url> for Slideshow {
     type Error = String;
 
     fn try_from(share_link: &Url) -> Result<Slideshow, Self::Error> {
-        let (api_url, sharing_id) = api::parse_share_link(share_link)?;
+        let (api_url, sharing_id) = api_photos::parse_share_link(share_link)?;
 
         Ok(Slideshow {
             api_url,
@@ -53,7 +53,7 @@ impl Slideshow {
         random: Random,
     ) -> Result<Bytes, String> {
         if !self.is_logged_in(cookie_store) {
-            api::login(client, &self.api_url, &self.sharing_id).map_err_to_string()?;
+            api_photos::login(client, &self.api_url, &self.sharing_id).map_err_to_string()?;
         }
 
         if self.slideshow_ended() {
@@ -64,7 +64,7 @@ impl Slideshow {
             .photo_display_sequence
             .pop()
             .expect("photos should not be empty");
-        let photos = api::get_album_contents(
+        let photos = api_photos::get_album_contents(
             client,
             &self.api_url,
             &self.sharing_id,
@@ -74,7 +74,7 @@ impl Slideshow {
         .map_err_to_string()?;
 
         if let Some(photo) = photos.first() {
-            match api::get_photo(
+            match api_photos::get_photo(
                 client,
                 &self.api_url,
                 &self.sharing_id,
@@ -137,7 +137,7 @@ impl Slideshow {
     }
 
     fn get_photos_count(&self, client: &impl Client) -> Result<u32, String> {
-        let albums = api::get_album_contents_count(client, &self.api_url, &self.sharing_id)
+        let albums = api_photos::get_album_contents_count(client, &self.api_url, &self.sharing_id)
             .map_err_to_string()?;
         if let Some(Album { item_count }) = albums.first() {
             Ok(*item_count)
@@ -152,7 +152,7 @@ impl Slideshow {
 mod tests {
     use super::*;
     use crate::{
-        api::dto,
+        api_photos::dto,
         http::{Jar, MockResponse},
         test_helpers::{self, MockClient},
     };
