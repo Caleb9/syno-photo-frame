@@ -4,9 +4,10 @@ use mock_instant::Instant;
 #[cfg(not(test))]
 use std::time::Instant;
 
-use crate::cli::Transition;
-
-use crate::sdl::{Color, Sdl, TextureIndex};
+use crate::{
+    cli::Transition,
+    sdl::{Color, Sdl, TextureIndex},
+};
 
 const TRANSITION_ALPHA_MIN: f64 = 0_f64;
 const TRANSITION_ALPHA_MAX: f64 = 255_f64;

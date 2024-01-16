@@ -2,14 +2,12 @@
 
 pub(crate) use sdl2::{event::Event, pixels::Color};
 
-use sdl2::render::BlendMode;
-use sdl2::ttf::FontStyle;
 use sdl2::{
     pixels::PixelFormatEnum,
     rect::Rect,
-    render::{Canvas, Texture, TextureCreator, TextureQuery},
+    render::{BlendMode, Canvas, Texture, TextureCreator, TextureQuery},
     rwops::RWops,
-    ttf::Sdl2TtfContext,
+    ttf::{FontStyle, Sdl2TtfContext},
     video::{DisplayMode, Window, WindowContext},
     EventPump, VideoSubsystem,
 };

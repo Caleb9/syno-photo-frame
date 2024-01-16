@@ -1,6 +1,4 @@
-use image::DynamicImage;
-
-use crate::img;
+use crate::img::{self, DynamicImage};
 
 pub(crate) fn welcome_image(size: (u32, u32)) -> Result<DynamicImage, String> {
     #[cfg(target_os = "linux")]
