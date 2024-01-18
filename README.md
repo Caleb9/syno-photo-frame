@@ -10,6 +10,10 @@ Features speed control, transition effects and blurry background fill.
 
 ![](doc/Slideshow.png "Extra space gets blurry background")
 
+__If you like the project, give it a star ⭐, or consider becoming a__
+[![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/caleb9)
+:)
+
 - [Syno Photo Frame](#syno-photo-frame)
   - [Why?](#why)
     - [Security Disclaimer](#security-disclaimer)
@@ -59,16 +63,16 @@ Internet, or if you're running this setup in an un-trusted LAN
 
 Assuming Synology Photos package is installed on DSM
 
-1. Create an __album__ in Synology Photos and add photos to it (note
+0. Create an __album__ in Synology Photos and add photos to it (note
    the distinction between an "album" and a "folder")
-2. Click "Share" icon in the album
-3. Check "Enable share link" option
+1. Click "Share" button in the album
+2. Check "Enable share link" option
+3. Copy the Share Link somewhere - you'll need it when setting up the
+   app on Raspberry Pi later on
 4. Set Privacy Settings to "Public - Anyone with the link can view"
-5. Do NOT enable Link Protection - support for password protection
+5. __Do NOT enable Link Protection__ - support for password protection
    might get implemented in the future, for now the assumption is that
    the NAS and Pi are on the same *private* LAN.
-7. Copy the Share Link somewhere - you'll need it when running the
-   slideshow app on Raspberry Pi
 6. Click Save
 
 ![Share Album](doc/ShareLink.png)
