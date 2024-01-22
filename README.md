@@ -31,6 +31,7 @@ __If you like the project, give it a star ⭐, or consider becoming a__
     - [Change Transition Effect](#change-transition-effect)
     - [Customize splash-screen](#customize-splash-screen)
     - [Auto Brightness](#auto-brightness)
+  - [Supported By](#supported-by)
 
 ## Why?
 
@@ -239,3 +240,9 @@ of such sensor. Check out my
 [auto-brightness-rpi-tsl2591](https://github.com/Caleb9/auto-brightness-rpi-tsl2591)
 project to add automatic brightness control to your digital photo
 frame.
+
+
+## Supported By
+
+[![JetBrains Logo (Main)
+logo](https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg)](https://jb.gg/OpenSourceSupport)

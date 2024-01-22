@@ -8,6 +8,8 @@ use clap::ValueEnum;
 use crate::http::Url;
 
 /// Synology Photos album fullscreen slideshow
+///
+/// Project website: https://github.com/caleb9/syno-photo-frame
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 pub struct Cli {
