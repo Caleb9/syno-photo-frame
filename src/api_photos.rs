@@ -35,12 +35,14 @@ pub(crate) fn login(
     client: &impl Client,
     api_url: &Url,
     sharing_id: &SharingId,
+    password: &Option<String>,
 ) -> Result<(), PhotosApiError> {
     let params = [
         ("api", "SYNO.Core.Sharing.Login"),
         ("method", "login"),
         ("version", "1"),
         ("sharing_id", &sharing_id.0),
+        ("password", password.as_deref().unwrap_or_default()),
     ];
     let response = client.post(api_url.as_str(), &params, None)?;
     read_response(response, |response| {

@@ -46,6 +46,7 @@ pub fn run(
 ) -> Result<(), String> {
     let slideshow = Arc::new(Mutex::new(
         Slideshow::try_from(&cli.share_link)?
+            .with_password(&cli.password)
             .with_ordering(cli.order)
             .with_source_size(cli.source_size),
     ));
@@ -115,7 +116,7 @@ fn show_welcome_screen(sdl: &mut impl Sdl, custom_splash: &Option<PathBuf>) -> R
 }
 
 fn get_next_photo_thread<'a>(
-    slideshow: &Arc<Mutex<Slideshow>>,
+    slideshow: &'a Arc<Mutex<Slideshow>>,
     (client, cookie_store): (&'a impl Client, &Arc<dyn CookieStore>),
     dimensions: (u32, u32),
     random: Random,

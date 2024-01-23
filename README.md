@@ -16,12 +16,11 @@ __If you like the project, give it a star ⭐, or consider becoming a__
 
 - [Syno Photo Frame](#syno-photo-frame)
   - [Why?](#why)
-    - [Security Disclaimer](#security-disclaimer)
   - [Setup](#setup)
     - [Synology Photos (NAS)](#synology-photos-nas)
     - [Raspberry Pi](#raspberry-pi)
-      - [Install From Debian Package](#install-from-debian-package)
-      - [Alternative: Build From Source](#alternative-build-from-source)
+      - [Option 1: Install From Debian Package](#option-1-install-from-debian-package)
+      - [Option 2: Build From Source](#option-2-build-from-source)
   - [Run](#run)
   - [Optional Stuff](#optional-stuff)
     - [Increase swap size on Raspberry Pi Zero](#increase-swap-size-on-raspberry-pi-zero)
@@ -49,15 +48,6 @@ static image app, which matters when using Raspberry Pi, especially in
 the Zero variant.
 
 
-### Security Disclaimer
-
-Since I am running all of this over local area network at home only,
-security is not a priority for me. You should take extra steps which
-are out of scope of this guide if you plan to access your NAS over
-Internet, or if you're running this setup in an un-trusted LAN
-(e.g. in an office or a dorm).
-
-
 ## Setup
 
 ### Synology Photos (NAS)
@@ -68,12 +58,14 @@ Assuming Synology Photos package is installed on DSM
    the distinction between an "album" and a "folder")
 1. Click "Share" button in the album
 2. Check "Enable share link" option
-3. Copy the Share Link somewhere - you'll need it when setting up the
-   app on Raspberry Pi later on
-4. Set Privacy Settings to "Public - Anyone with the link can view"
-5. __Do NOT enable Link Protection__ - support for password protection
-   might get implemented in the future, for now the assumption is that
-   the NAS and Pi are on the same *private* LAN.
+3. Copy / write down the Share Link - you'll need it when setting up
+   the app on Raspberry Pi later on
+4. Set Privacy Settings to one of the "Public" options
+5. Optionally, enable Link Protection - if password is set, you will
+   need to provide it using the `--password` option when running the
+   app on Raspberry Pi. In case of accessing the NAS over internet or
+   an untrusted LAN, I recommend making sure your share link uses the
+   HTTPS (not HTTP) scheme to prevent exposing the password.
 6. Click Save
 
 ![Share Album](doc/ShareLink.png)
@@ -86,7 +78,7 @@ Raspberry Pi OS Lite, network has been set up (so you can access the
 Synology NAS) and you have command line access to the Pi.
 
 
-#### Install From Debian Package
+#### Option 1: Install From Debian Package
 
 Update the system
 
@@ -100,8 +92,8 @@ apt upgrade -y'
 contains pre-built .deb packages for aarch64 Linux target, which
 should work on Raspberry Pi 3 and up, as well as Zero 2 (assuming
 64bit version of Raspbian OS is installed). For other platforms you
-must build the project yourself - see [Alternative: Build From
-Source](#alternative-build-from-source).
+must build the project yourself - see [Option 2: Build From
+Source](#option-2-build-from-source).
 
 Check the installed version of Debian with `lsb_release -c` and
 download appropriate
@@ -113,11 +105,11 @@ Debian 11 ("bullseye") and 12 ("bookworm").
 the app (adjust the filename appropriately):
 
 ```
-sudo apt install ./syno-photo-frame_0.7.0_arm64_bookworm.deb
+sudo apt install ./syno-photo-frame_0.10.0_arm64_bookworm.deb
 ```
 
 
-#### Alternative: Build From Source
+#### Option 2: Build From Source
 
 [Install Rust](https://www.rust-lang.org/tools/install) if you have
 not already.
@@ -138,10 +130,12 @@ Install the app from [crates.io](https://crates.io/crates/syno-photo-frame):
 cargo install syno-photo-frame
 ```
 
-The binary is then located at `$HOME/.cargo/bin/syno-photo-frame` and
-should be available on your `$PATH`.
+When building is finished, the binary is then located at
+`$HOME/.cargo/bin/syno-photo-frame` and should be available on your
+`$PATH`.
 
-Alternatively, clone the git repository and build the project with:
+Alternatively, clone the git repository and build the project with (in
+cloned directory):
 ```
 cargo build --release
 ```

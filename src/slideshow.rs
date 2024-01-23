@@ -11,24 +11,26 @@ use crate::{
 
 /// Holds the slideshow state and queries API to fetch photos.
 #[derive(Debug)]
-pub(crate) struct Slideshow {
+pub(crate) struct Slideshow<'a> {
     api_url: Url,
     sharing_id: SharingId,
+    password: &'a Option<String>,
     /// Indices of photos in an album in reverse order (so we can pop them off easily)
     photo_display_sequence: Vec<u32>,
     order: Order,
     source_size: SourceSize,
 }
 
-impl TryFrom<&Url> for Slideshow {
+impl<'a> TryFrom<&Url> for Slideshow<'a> {
     type Error = String;
 
-    fn try_from(share_link: &Url) -> Result<Slideshow, Self::Error> {
+    fn try_from(share_link: &Url) -> Result<Slideshow<'a>, Self::Error> {
         let (api_url, sharing_id) = api_photos::parse_share_link(share_link)?;
 
         Ok(Slideshow {
             api_url,
             sharing_id,
+            password: &None,
             photo_display_sequence: vec![],
             order: Order::ByDate,
             source_size: SourceSize::L,
@@ -36,7 +38,12 @@ impl TryFrom<&Url> for Slideshow {
     }
 }
 
-impl Slideshow {
+impl<'a> Slideshow<'a> {
+    pub(crate) fn with_password(mut self, password: &'a Option<String>) -> Self {
+        self.password = password;
+        self
+    }
+
     pub(crate) fn with_ordering(mut self, order: Order) -> Self {
         self.order = order;
         self
@@ -53,7 +60,8 @@ impl Slideshow {
         random: Random,
     ) -> Result<Bytes, String> {
         if !self.is_logged_in(cookie_store) {
-            api_photos::login(client, &self.api_url, &self.sharing_id).map_err_to_string()?;
+            api_photos::login(client, &self.api_url, &self.sharing_id, &self.password)
+                .map_err_to_string()?;
         }
 
         if self.slideshow_ended() {
@@ -147,7 +155,7 @@ impl Slideshow {
     }
 }
 
-/// These tests cover both `slideshow` and `api` modules
+/// These tests cover both `slideshow` and `api_photos` modules
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -667,6 +675,7 @@ mod tests {
             ("method", "login"),
             ("version", "1"),
             ("sharing_id", sharing_id),
+            ("password", ""),
         ])
     }
 

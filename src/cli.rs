@@ -15,8 +15,12 @@ use crate::http::Url;
 pub struct Cli {
     /// Link to a publicly shared album on Synology Photos
     ///
-    /// Note that the album's privacy settings must be set to Public and link password protection must be disabled
+    /// Note that the album's privacy settings must be set to Public
     pub share_link: Url,
+
+    /// Link protection password if set in the album sharing settings
+    #[arg(short = 'p', long = "password")]
+    pub password: Option<String>,
 
     /// Photo change interval in seconds
     ///
