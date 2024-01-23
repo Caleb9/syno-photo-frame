@@ -40,7 +40,21 @@ where
         form: &[(&str, &str)],
         header: Option<(&str, &str)>,
     ) -> Result<Self::Response, String> {
-        log::log!(self.level, "POST {url}, form: {form:?}, header: {header:?}");
+        /* Obfuscate password from the form parameters */
+        let obfuscated_form = form
+            .iter()
+            .map(|(k, v)| {
+                if *k == "password" {
+                    (*k, "[REDACTED]")
+                } else {
+                    (*k, *v)
+                }
+            })
+            .collect::<Vec<(&str, &str)>>();
+        log::log!(
+            self.level,
+            "POST {url}, form: {obfuscated_form:?}, header: {header:?}"
+        );
         let response = self.client.post(url, form, header);
         log::log!(self.level, "{response:?}");
         response
