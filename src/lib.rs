@@ -12,12 +12,14 @@ use std::{
 };
 
 use cli::{Cli, Transition};
+use error::SynoPhotoFrameError;
 use http::{Client, CookieStore};
 use img::{DynamicImage, Framed};
 use sdl::{Event, Sdl, TextureIndex};
 use slideshow::Slideshow;
 
 pub mod cli;
+pub mod error;
 pub mod http;
 pub mod logging;
 pub mod sdl;
@@ -43,7 +45,7 @@ pub fn run(
     sleep: fn(Duration),
     random: Random,
     installed_version: &str,
-) -> Result<(), String> {
+) -> Result<(), SynoPhotoFrameError> {
     let slideshow = Arc::new(Mutex::new(
         Slideshow::try_from(&cli.share_link)?
             .with_password(&cli.password)
@@ -55,7 +57,7 @@ pub fn run(
 
     let mut show_update_notification = false;
     /* Initialize slideshow by getting the first photo and starting with fade-in */
-    thread::scope::<'_, _, Result<(), String>>(|thread_scope| {
+    thread::scope::<'_, _, Result<(), SynoPhotoFrameError>>(|thread_scope| {
         show_welcome_screen(sdl, &cli.splash)?;
         let first_photo_thread =
             get_next_photo_thread(&slideshow, http, sdl.size(), random, thread_scope);
@@ -95,7 +97,10 @@ pub fn run(
     )
 }
 
-fn show_welcome_screen(sdl: &mut impl Sdl, custom_splash: &Option<PathBuf>) -> Result<(), String> {
+fn show_welcome_screen(
+    sdl: &mut impl Sdl,
+    custom_splash: &Option<PathBuf>,
+) -> Result<(), SynoPhotoFrameError> {
     let welcome_img = match custom_splash {
         None => asset::welcome_image(sdl.size())?,
         Some(path) => {
@@ -121,14 +126,14 @@ fn get_next_photo_thread<'a>(
     dimensions: (u32, u32),
     random: Random,
     thread_scope: &'a Scope<'a, '_>,
-) -> ScopedJoinHandle<'a, Result<DynamicImage, String>> {
+) -> ScopedJoinHandle<'a, Result<DynamicImage, SynoPhotoFrameError>> {
     let (client, slideshow, cookie_store) =
         (client.clone(), slideshow.clone(), cookie_store.clone());
 
     thread_scope.spawn(move || {
         let bytes = slideshow
             .lock()
-            .map_err_to_string()?
+            .map_err(|error| SynoPhotoFrameError::Other(error.to_string()))?
             .get_next_photo((&client, &cookie_store), random)?;
         let photo = img::load_from_memory(&bytes)?.fit_to_screen_and_add_background(dimensions);
         Ok(photo)
@@ -146,17 +151,19 @@ fn is_exit_requested(sdl: &mut impl Sdl) -> bool {
 }
 
 fn load_photo_from_thread_or_error_screen(
-    get_photo_thread: ScopedJoinHandle<'_, Result<DynamicImage, String>>,
+    get_photo_thread: ScopedJoinHandle<'_, Result<DynamicImage, SynoPhotoFrameError>>,
     sdl: &mut impl Sdl,
-) -> Result<(), String> {
+) -> Result<(), SynoPhotoFrameError> {
     let photo_or_error = match get_photo_thread.join().unwrap() {
         Ok(photo) => photo,
-        Err(error) => {
+        Err(SynoPhotoFrameError::Other(error)) => {
             log::error!("{error}");
             asset::error_image(sdl.size())?
         }
+        login_error => return login_error.map(|_| ()),
     };
-    sdl.update_texture(photo_or_error.as_bytes(), TextureIndex::Next)
+    sdl.update_texture(photo_or_error.as_bytes(), TextureIndex::Next)?;
+    Ok(())
 }
 
 fn slideshow_loop(
@@ -166,7 +173,7 @@ fn slideshow_loop(
     (photo_change_interval, transition, show_update_notification): (Duration, Transition, bool),
     sleep: fn(Duration),
     random: Random,
-) -> Result<(), String> {
+) -> Result<(), SynoPhotoFrameError> {
     thread::scope(|thread_scope| {
         let mut last_change = Instant::now();
         let mut next_photo_thread =

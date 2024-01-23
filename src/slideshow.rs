@@ -5,6 +5,7 @@ use bytes::Bytes;
 use crate::{
     api_photos::{self, dto::Album, PhotosApiError, SharingId},
     cli::{Order, SourceSize},
+    error::SynoPhotoFrameError,
     http::{Client, CookieStore, StatusCode, Url},
     ErrorToString, Random,
 };
@@ -58,10 +59,10 @@ impl<'a> Slideshow<'a> {
         &mut self,
         (client, cookie_store): (&impl Client, &Arc<dyn CookieStore>),
         random: Random,
-    ) -> Result<Bytes, String> {
+    ) -> Result<Bytes, SynoPhotoFrameError> {
         if !self.is_logged_in(cookie_store) {
-            api_photos::login(client, &self.api_url, &self.sharing_id, &self.password)
-                .map_err_to_string()?;
+            api_photos::login(client, &self.api_url, &self.sharing_id, self.password)
+                .map_err(SynoPhotoFrameError::Login)?;
         }
 
         if self.slideshow_ended() {
@@ -77,9 +78,9 @@ impl<'a> Slideshow<'a> {
             &self.api_url,
             &self.sharing_id,
             photo_index,
-            1.try_into()?,
+            1.try_into().unwrap(),
         )
-        .map_err_to_string()?;
+        .map_err(|error| SynoPhotoFrameError::Other(error.to_string()))?;
 
         if let Some(photo) = photos.first() {
             match api_photos::get_photo(
@@ -97,7 +98,7 @@ impl<'a> Slideshow<'a> {
                     /* Photo has been removed since we fetched its metadata, try next one */
                     self.get_next_photo((client, cookie_store), random)
                 }
-                Err(error) => Err(error.to_string()),
+                Err(error) => Err(SynoPhotoFrameError::Other(error.to_string())),
             }
         } else {
             /* Photos were removed from the album since we fetched its item_count. Reinitialize */

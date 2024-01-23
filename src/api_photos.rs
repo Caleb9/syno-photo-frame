@@ -184,7 +184,7 @@ where
 }
 
 #[derive(Debug)]
-pub(crate) enum PhotosApiError {
+pub enum PhotosApiError {
     Reqwest(String),
     InvalidHttpResponse(StatusCode),
     InvalidApiResponse(&'static str, i32),

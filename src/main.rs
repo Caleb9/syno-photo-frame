@@ -7,6 +7,7 @@ use simple_logger::SimpleLogger;
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
+    error::SynoPhotoFrameError,
     http::{ClientBuilder, CookieStore, ReqwestClient},
     logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
@@ -27,13 +28,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     match init_and_run() {
         Err(error) => {
             log::error!("{error}");
-            Err(error)?
+            match error {
+                SynoPhotoFrameError::Login(_) => Err(
+                    "Login to Synology Photos failed. Make sure the share link is pointing to a \
+                        *publicly shared album*. If the album's password link protection is \
+                        enabled, use the --password option with a valid password.",
+                )?,
+                other => Err(other)?,
+            }
         }
         _ => Ok(()),
     }
 }
 
-fn init_and_run() -> Result<(), String> {
+fn init_and_run() -> Result<(), SynoPhotoFrameError> {
     let cli = Cli::parse();
 
     /* HTTP client */
