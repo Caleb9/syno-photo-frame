@@ -63,9 +63,10 @@ Assuming Synology Photos package is installed on DSM
 4. Set Privacy Settings to one of the "Public" options
 5. Optionally, enable Link Protection - if password is set, you will
    need to provide it using the `--password` option when running the
-   app on Raspberry Pi. In case of accessing the NAS over internet or
-   an untrusted LAN, I recommend making sure your share link uses the
-   HTTPS (not HTTP) scheme to prevent exposing the password.
+   app on Raspberry Pi. In case of accessing Synology Photos over the
+   internet or an untrusted LAN, I recommend making sure your share
+   link uses the HTTPS (not HTTP) scheme to prevent exposing the
+   password.
 6. Click Save
 
 ![Share Album](doc/ShareLink.png)
@@ -73,12 +74,27 @@ Assuming Synology Photos package is installed on DSM
 
 ### Raspberry Pi
 
-The assumption is that you are starting with a fresh installation of
-Raspberry Pi OS Lite, network has been set up (so you can access the
-Synology NAS) and you have command line access to the Pi.
+Let's assume that you're starting with a fresh installation of
+Raspberry Pi OS Lite, network has been set up (so you can access
+Synology Photos) and you can access the command line on your Pi.
 
 
 #### Option 1: Install From Debian Package
+
+[Releases](https://github.com/Caleb9/syno-photo-frame/releases)
+contains pre-built .deb packages for aarch64 Linux architecture, which
+should work on Raspberry Pi 3 and up, as well as Zero 2 (assuming
+64bit version of Raspbian OS Bookworm is installed).
+
+* Check the architecture with `uname -m`, it should return "aarch64".
+* Check the installed version of Debian with `lsb_release -c` and make
+  sure it says "bookworm".
+
+__For other platforms (including older versions of Debian, such as
+"bullseye") you must build the project from source - see [Option 2:
+Build From Source](#option-2-build-from-source)__.
+
+Download the `syno-photo-frame_X.Y.Z_arm64.deb` package from Releases.
 
 Update the system
 
@@ -88,24 +104,11 @@ apt update && \
 apt upgrade -y'
 ```
 
-[Releases](https://github.com/Caleb9/syno-photo-frame/releases)
-contains pre-built .deb packages for aarch64 Linux target, which
-should work on Raspberry Pi 3 and up, as well as Zero 2 (assuming
-64bit version of Raspbian OS is installed). For other platforms you
-must build the project yourself - see [Option 2: Build From
-Source](#option-2-build-from-source).
-
-Check the installed version of Debian with `lsb_release -c` and
-download appropriate
-`syno-photo-frame_X.Y.Z_arm64_{debian_codename}.deb` package from
-Releases. Note that currently the only available packages are for
-Debian 11 ("bullseye") and 12 ("bookworm").
-
 `cd` to directory where the package has been downloaded and install
 the app (adjust the filename appropriately):
 
 ```
-sudo apt install ./syno-photo-frame_0.10.0_arm64_bookworm.deb
+sudo apt install ./syno-photo-frame_0.10.0_arm64.deb
 ```
 
 
@@ -145,7 +148,7 @@ The binary is then located at `target/release/syno-photo-frame`.
 
 ## Run
 
-Display help message:
+Display help message to see various available options:
 ```
 syno-photo-frame --help
 ```
