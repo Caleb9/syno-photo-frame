@@ -12,7 +12,7 @@ use crate::{
 const TRANSITION_ALPHA_MIN: f64 = 0_f64;
 const TRANSITION_ALPHA_MAX: f64 = 255_f64;
 // Possibly parametrize this and take command line argument to control length of the transition
-const FADE_TO_BLACK_DURATION_SECS: f64 = 2_f64;
+const FADE_TO_BLACK_DURATION_SECS: f64 = 1_f64;
 const CROSSFADE_DURATION_SECS: f64 = 1_f64;
 
 impl Transition {
@@ -141,8 +141,8 @@ mod tests {
     fn fade_to_black_play_calls_canvas_methods_in_sequence() {
         let mut sdl = MockSdl::default();
         /* First iteration steps alpha by 0 */
-        const EXPECTED_FADE_OUT_ITERATIONS: usize = 31;
-        const EXPECTED_FADE_IN_ITERATIONS: usize = 31;
+        const EXPECTED_FADE_OUT_ITERATIONS: usize = 16;
+        const EXPECTED_FADE_IN_ITERATIONS: usize = 16;
 
         sdl.expect_handle_quit_event()
             .times(EXPECTED_FADE_OUT_ITERATIONS + EXPECTED_FADE_IN_ITERATIONS)
@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn fade_to_black_play_takes_two_seconds_and_is_fps_independent() {
+    fn fade_to_black_play_takes_one_second_and_is_fps_independent() {
         test_case(30_f64);
         test_case(60_f64);
 
@@ -267,7 +267,7 @@ mod tests {
             Transition::FadeToBlack.play(&mut sdl, false).unwrap();
 
             let fade_duration = MockClock::time();
-            assert_eq!(fade_duration.as_secs(), 2);
+            assert_eq!(fade_duration.as_secs(), 1);
         }
     }
 
@@ -300,7 +300,7 @@ mod tests {
         sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
-        let alpha_prefix = [0, 8, 17];
+        let alpha_prefix = [0, 17, 34];
         for alpha in alpha_prefix {
             /* Check alpha value for first 3 calls to fill_canvas. */
             sdl.expect_fill_canvas()
@@ -309,8 +309,8 @@ mod tests {
                 .return_const(Ok(()));
         }
         /* Set up calls between first and last 3 iterations */
-        const EXPECTED_ITERATIONS: usize = 62;
-        let alpha_postfix = [17, 9, 0];
+        const EXPECTED_ITERATIONS: usize = 32;
+        let alpha_postfix = [34, 17, 0];
         sdl.expect_fill_canvas()
             .times(EXPECTED_ITERATIONS - alpha_prefix.len() - alpha_postfix.len())
             .return_const(Ok(()));
