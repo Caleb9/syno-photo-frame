@@ -114,6 +114,10 @@ sudo apt install ./syno-photo-frame_0.10.0_arm64.deb
 
 #### Option 2: Build From Source
 
+Note: These instructions assume Debian based Linux distribution, but
+adjusting them should make it possible to build the app for almost any
+platform where Rust and [SDL](https://www.libsdl.org/) are available.
+
 [Install Rust](https://www.rust-lang.org/tools/install) if you have
 not already.
 

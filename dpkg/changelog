@@ -1,3 +1,9 @@
+syno-photo-frame (0.10.1) stable; urgency=low
+  [Piotr Karasinski ]
+  * Fix quit event handling
+
+ -- Piotr-Karasinski <7767011+Caleb9@users.noreply.github.com>  Fri, 26 Jan 2024 12:00:00 +0200
+
 syno-photo-frame (0.10.0) stable; urgency=low
   [Piotr Karasinski ]
   * Add support for password protected albums
