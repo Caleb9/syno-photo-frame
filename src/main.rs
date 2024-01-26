@@ -83,8 +83,7 @@ fn init_and_run() -> Result<(), SynoPhotoFrameError> {
             &(cookie_store as Arc<dyn CookieStore>),
         ),
         &mut sdl,
-        thread::sleep,
-        random,
+        (thread::sleep, random),
         installed_version,
     )?;
 

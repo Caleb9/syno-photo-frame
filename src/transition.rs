@@ -48,11 +48,9 @@ impl Transition {
         let mut last = Instant::now();
         const DIFF: f64 = TRANSITION_ALPHA_MAX / CROSSFADE_DURATION_SECS;
         while alpha.round() < TRANSITION_ALPHA_MAX {
+            sdl.handle_quit_event();
             delta = (Instant::now() - last).as_secs_f64();
             last = Instant::now();
-            if super::is_exit_requested(sdl) {
-                break;
-            }
             sdl.copy_texture_to_canvas(TextureIndex::Current)?;
             alpha += delta * DIFF;
             sdl.set_texture_alpha(alpha.round() as u8, TextureIndex::Next);
@@ -76,11 +74,9 @@ impl Transition {
         let mut alpha = phase.init_alpha();
         let mut last = Instant::now();
         while !phase.is_finished(alpha) {
+            sdl.handle_quit_event();
             delta = (Instant::now() - last).as_secs_f64();
             last = Instant::now();
-            if super::is_exit_requested(sdl) {
-                return Ok(false);
-            }
             alpha += phase.step_alpha(delta);
             sdl.copy_texture_to_canvas(phase.texture_index())?;
             sdl.fill_canvas(Color::RGBA(0, 0, 0, alpha.round() as u8))?;
@@ -137,7 +133,7 @@ mod tests {
     use mock_instant::MockClock;
     use mockall::Sequence;
 
-    use crate::sdl::{Event, MockSdl};
+    use crate::sdl::MockSdl;
 
     use super::*;
 
@@ -147,9 +143,10 @@ mod tests {
         /* First iteration steps alpha by 0 */
         const EXPECTED_FADE_OUT_ITERATIONS: usize = 31;
         const EXPECTED_FADE_IN_ITERATIONS: usize = 31;
-        sdl.expect_events()
+
+        sdl.expect_handle_quit_event()
             .times(EXPECTED_FADE_OUT_ITERATIONS + EXPECTED_FADE_IN_ITERATIONS)
-            .returning(|| Box::new([].into_iter()));
+            .return_const(());
         let mut canvas_seq = Sequence::default();
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
@@ -211,9 +208,9 @@ mod tests {
         let mut sdl = MockSdl::default();
         /* First iteration steps alpha by 0 */
         const EXPECTED_ITERATIONS: usize = 31;
-        sdl.expect_events()
+        sdl.expect_handle_quit_event()
             .times(EXPECTED_ITERATIONS)
-            .returning(|| Box::new([].into_iter()));
+            .return_const(());
         let mut canvas_seq = Sequence::default();
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
@@ -259,7 +256,7 @@ mod tests {
 
         fn test_case(fps: f64) {
             let mut sdl = MockSdl::default();
-            sdl.expect_events().returning(|| Box::new([].into_iter()));
+            sdl.expect_handle_quit_event().return_const(());
             let frame_duration = Duration::from_secs_f64(1_f64 / fps);
             sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
             sdl.expect_fill_canvas().return_const(Ok(()));
@@ -281,7 +278,7 @@ mod tests {
 
         fn test_case(fps: f64) {
             let mut sdl = MockSdl::default();
-            sdl.expect_events().returning(|| Box::new([].into_iter()));
+            sdl.expect_handle_quit_event().return_const(());
             let frame_duration = Duration::from_secs_f64(1_f64 / fps);
             sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
             sdl.expect_set_texture_alpha().return_const(());
@@ -299,7 +296,7 @@ mod tests {
     #[test]
     fn fade_to_black_play_mutates_alpha() {
         let mut sdl = MockSdl::default();
-        sdl.expect_events().returning(|| Box::new([].into_iter()));
+        sdl.expect_handle_quit_event().return_const(());
         sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
@@ -335,7 +332,7 @@ mod tests {
     #[test]
     fn crossfade_play_mutates_alpha() {
         let mut sdl = MockSdl::default();
-        sdl.expect_events().returning(|| Box::new([].into_iter()));
+        sdl.expect_handle_quit_event().return_const(());
         sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
@@ -377,7 +374,7 @@ mod tests {
 
         fn test_case(sut: Transition) {
             let mut sdl = MockSdl::default();
-            sdl.expect_events().returning(|| Box::new([].into_iter()));
+            sdl.expect_handle_quit_event().return_const(());
             sdl.expect_set_texture_alpha().return_const(());
             sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
             sdl.expect_fill_canvas().return_const(Ok(()));
@@ -395,38 +392,6 @@ mod tests {
 
             assert!(result.is_ok());
             sdl.checkpoint();
-        }
-    }
-
-    #[test]
-    fn transition_play_exits_on_quit_event() {
-        test_case(Transition::Crossfade);
-        test_case(Transition::FadeToBlack);
-
-        fn test_case(sut: Transition) {
-            let mut sdl = MockSdl::default();
-            sdl.expect_events()
-                .times(15)
-                .returning(|| Box::new([].into_iter()));
-            /* Quit event occuring after 15 frames */
-            sdl.expect_events()
-                .return_once(|| Box::new([Event::Quit { timestamp: 0 }].into_iter()));
-            sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
-            const FPS: f64 = 30_f64;
-            let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
-            sdl.expect_set_texture_alpha().return_const(());
-            sdl.expect_fill_canvas().return_const(Ok(()));
-            sdl.expect_present_canvas()
-                .returning(move || MockClock::advance(frame_duration));
-            reset_clock();
-
-            let result = sut.play(&mut sdl, false);
-
-            assert!(result.is_ok());
-            sdl.checkpoint();
-            /* Check if Quit occured after roughly half second */
-            let fade_duration = MockClock::time();
-            assert_eq!(fade_duration.as_millis(), 499);
         }
     }
 

@@ -15,7 +15,7 @@ use cli::{Cli, Transition};
 use error::SynoPhotoFrameError;
 use http::{Client, CookieStore};
 use img::{DynamicImage, Framed};
-use sdl::{Event, Sdl, TextureIndex};
+use sdl::{Sdl, TextureIndex};
 use slideshow::Slideshow;
 
 pub mod cli;
@@ -42,8 +42,7 @@ pub fn run(
     cli: &Cli,
     http: (&impl Client, &Arc<dyn CookieStore>),
     sdl: &mut impl Sdl,
-    sleep: fn(Duration),
-    random: Random,
+    (sleep, random): (fn(Duration), Random),
     installed_version: &str,
 ) -> Result<(), SynoPhotoFrameError> {
     let slideshow = Arc::new(Mutex::new(
@@ -69,9 +68,7 @@ pub fn run(
         );
 
         while !first_photo_thread.is_finished() {
-            if is_exit_requested(sdl) {
-                return Ok(());
-            }
+            sdl.handle_quit_event();
             /* Avoid maxing out CPU */
             const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
             sleep(LOOP_SLEEP_DURATION);
@@ -92,8 +89,7 @@ pub fn run(
             cli.transition,
             show_update_notification,
         ),
-        sleep,
-        random,
+        (sleep, random),
     )
 }
 
@@ -140,16 +136,6 @@ fn get_next_photo_thread<'a>(
     })
 }
 
-fn is_exit_requested(sdl: &mut impl Sdl) -> bool {
-    sdl.events().any(|e| match e {
-        event @ (Event::Quit { .. } | Event::AppTerminating { .. }) => {
-            log::debug!("SDL event received: {event:?}");
-            true
-        }
-        _ => false,
-    })
-}
-
 fn load_photo_from_thread_or_error_screen(
     get_photo_thread: ScopedJoinHandle<'_, Result<DynamicImage, SynoPhotoFrameError>>,
     sdl: &mut impl Sdl,
@@ -171,17 +157,14 @@ fn slideshow_loop(
     sdl: &mut impl Sdl,
     slideshow: &Arc<Mutex<Slideshow>>,
     (photo_change_interval, transition, show_update_notification): (Duration, Transition, bool),
-    sleep: fn(Duration),
-    random: Random,
+    (sleep, random): (fn(Duration), Random),
 ) -> Result<(), SynoPhotoFrameError> {
     thread::scope(|thread_scope| {
         let mut last_change = Instant::now();
         let mut next_photo_thread =
             get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
         loop {
-            if is_exit_requested(sdl) {
-                break;
-            }
+            sdl.handle_quit_event();
 
             let next_photo_is_ready = next_photo_thread.is_finished();
             let elapsed_display_duration = Instant::now() - last_change;
@@ -198,7 +181,6 @@ fn slideshow_loop(
                 sleep(LOOP_SLEEP_DURATION);
             }
         }
-        Ok(())
     })
 }
 

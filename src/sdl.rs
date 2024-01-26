@@ -1,8 +1,9 @@
 //! Rendering
 
-pub(crate) use sdl2::{event::Event, pixels::Color};
+pub(crate) use sdl2::pixels::Color;
 
 use sdl2::{
+    event::Event,
     pixels::PixelFormatEnum,
     rect::Rect,
     render::{BlendMode, Canvas, Texture, TextureCreator, TextureQuery},
@@ -26,7 +27,7 @@ pub trait Sdl {
     fn swap_textures(&mut self);
     fn fill_canvas(&mut self, color: Color) -> Result<(), String>;
     fn present_canvas(&mut self);
-    fn events<'a>(&'a mut self) -> Box<dyn Iterator<Item = Event> + 'a>;
+    fn handle_quit_event(&mut self);
 }
 
 /// Index of a texture to operate on
@@ -90,8 +91,17 @@ impl<'a> Sdl for SdlWrapper<'a> {
         self.canvas.present()
     }
 
-    fn events(&mut self) -> Box<dyn Iterator<Item = Event> + '_> {
-        Box::new(self.events.poll_iter())
+    fn handle_quit_event(&mut self) {
+        let exit_requested = self.events.poll_iter().any(|e| match e {
+            event @ (Event::Quit { .. } | Event::AppTerminating { .. }) => {
+                log::debug!("SDL event received: {event:?}");
+                true
+            }
+            _ => false,
+        });
+        if exit_requested {
+            std::process::exit(0)
+        }
     }
 }
 
