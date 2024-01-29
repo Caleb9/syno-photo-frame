@@ -45,9 +45,9 @@ impl<'a> Sdl for SdlWrapper<'a> {
     }
 
     fn update_texture(&mut self, image_data: &[u8], index: TextureIndex) -> Result<(), String> {
-        self.textures[self.texture_index(index)].with_lock(None, |texture_data, _| {
-            texture_data.copy_from_slice(image_data)
-        })
+        self.textures[self.texture_index(index)]
+            .update(None, image_data, self.pitch)
+            .map_err_to_string()
     }
 
     fn set_texture_alpha(&mut self, alpha: u8, index: TextureIndex) {
@@ -60,21 +60,10 @@ impl<'a> Sdl for SdlWrapper<'a> {
     }
 
     fn copy_update_notification_to_canvas(&mut self) -> Result<(), String> {
-        let TextureQuery { width, height, .. } = self.update_notification.query();
-        let (width, height) = (width as f64, height as f64);
-        /* Scale the notification to take approximately 1/8 of screen width */
-        const SCREEN_SIZE_FACTOR: f64 = 1f64 / 8f64;
-        let ratio = self.size.0 as f64 * SCREEN_SIZE_FACTOR / width;
-
         self.canvas.copy(
-            &self.update_notification,
+            &self.update_notification.texture,
             None,
-            Rect::new(
-                5,
-                5,
-                (width * ratio).round() as u32,
-                (height * ratio).round() as u32,
-            ),
+            self.update_notification.target_rect,
         )
     }
 
@@ -110,26 +99,41 @@ pub struct SdlWrapper<'a> {
     canvas: Canvas<Window>,
     textures: [Texture<'a>; 2],
     current_texture: usize,
-    update_notification: Texture<'a>,
+    update_notification: UpdateNotification<'a>,
     events: EventPump,
     size: (u32, u32),
+    /// Number of bytes in a row of pixel data, in other words image width multiplied by bytes-per-pixel
+    pitch: usize,
+}
+
+struct UpdateNotification<'a> {
+    texture: Texture<'a>,
+    target_rect: Rect,
 }
 
 impl<'a> SdlWrapper<'a> {
     pub fn new(
         canvas: Canvas<Window>,
         textures: [Texture<'a>; 2],
-        update_notification: Texture<'a>,
+        update_notification_texture: Texture<'a>,
         events: EventPump,
     ) -> Self {
-        let (w, h) = canvas.window().size();
+        let size = canvas.window().size();
+        let update_notification_target_rect =
+            update_notification_target_rect(&update_notification_texture, size);
+        let (w, ..) = size;
+        const BYTE_SIZE_PER_PIXEL: usize = 3;
         SdlWrapper {
             canvas,
             textures,
             current_texture: 0,
-            update_notification,
+            update_notification: UpdateNotification {
+                texture: update_notification_texture,
+                target_rect: update_notification_target_rect,
+            },
             events,
-            size: (w, h),
+            size,
+            pitch: (w as usize * BYTE_SIZE_PER_PIXEL),
         }
     }
 
@@ -179,7 +183,7 @@ pub fn create_texture(
     (w, h): (u32, u32),
 ) -> Result<Texture, String> {
     let mut texture = texture_creator
-        .create_texture_streaming(PixelFormatEnum::RGB24, w, h)
+        .create_texture_static(PixelFormatEnum::RGB24, w, h)
         .map_err_to_string()?;
     texture.set_blend_mode(BlendMode::Blend);
     Ok(texture)
@@ -203,4 +207,21 @@ pub fn create_update_notification_texture<'a>(
         .map_err_to_string()?
         .as_texture(texture_creator)
         .map_err_to_string()
+}
+
+fn update_notification_target_rect(
+    update_notification_texture: &Texture,
+    screen_size: (u32, u32),
+) -> Rect {
+    let TextureQuery { width, height, .. } = update_notification_texture.query();
+    let (width, height) = (width as f64, height as f64);
+    /* Scale the notification to take approximately 1/8 of screen width */
+    const SCREEN_SIZE_FACTOR: f64 = 1f64 / 8f64;
+    let ratio = screen_size.0 as f64 * SCREEN_SIZE_FACTOR / width;
+    Rect::new(
+        5,
+        5,
+        (width * ratio).round() as u32,
+        (height * ratio).round() as u32,
+    )
 }
