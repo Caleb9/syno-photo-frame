@@ -5,8 +5,8 @@ use regex::Regex;
 
 use crate::{
     cli::SourceSize,
+    error::ErrorToString,
     http::{Client, Response, StatusCode, Url},
-    ErrorToString,
 };
 
 use PhotosApiError::{InvalidApiResponse, InvalidHttpResponse};

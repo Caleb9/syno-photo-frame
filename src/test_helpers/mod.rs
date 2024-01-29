@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use mockall::mock;
 use serde::de::DeserializeOwned;
 
@@ -29,12 +27,12 @@ mock! {
 }
 
 /// When `is_logged_in_to_url` is set to Some value, cookie store will simulate logged in state
-pub(crate) fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> Arc<dyn CookieStore> {
-    let cookie_store = Arc::new(Jar::default());
+pub(crate) fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> impl CookieStore {
+    let cookie_store = Jar::default();
     if let Some(url) = is_logged_in_to_url {
         cookie_store.add_cookie_str("sharing_id=FakeSharingId", &Url::parse(url).unwrap());
     }
-    cookie_store as Arc<dyn CookieStore>
+    cookie_store
 }
 
 pub(crate) fn new_success_response() -> MockResponse {

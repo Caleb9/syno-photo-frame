@@ -8,7 +8,7 @@ use image::{
     GenericImageView,
 };
 
-use crate::ErrorToString;
+use crate::error::ErrorToString;
 
 pub(crate) trait Framed {
     fn fit_to_screen_and_add_background(&self, screen_dimensions: (u32, u32)) -> DynamicImage;

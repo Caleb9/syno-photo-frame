@@ -1,13 +1,11 @@
-use std::sync::Arc;
-
 use bytes::Bytes;
 
 use crate::{
     api_photos::{self, dto::Album, PhotosApiError, SharingId},
     cli::{Order, SourceSize},
-    error::SynoPhotoFrameError,
+    error::{ErrorToString, SynoPhotoFrameError},
     http::{Client, CookieStore, StatusCode, Url},
-    ErrorToString, Random,
+    Random,
 };
 
 /// Holds the slideshow state and queries API to fetch photos.
@@ -57,7 +55,7 @@ impl<'a> Slideshow<'a> {
 
     pub(crate) fn get_next_photo(
         &mut self,
-        (client, cookie_store): (&impl Client, &Arc<dyn CookieStore>),
+        (client, cookie_store): (&impl Client, &impl CookieStore),
         random: Random,
     ) -> Result<Bytes, SynoPhotoFrameError> {
         if !self.is_logged_in(cookie_store) {
@@ -107,7 +105,7 @@ impl<'a> Slideshow<'a> {
         }
     }
 
-    fn is_logged_in(&self, cookie_store: &Arc<dyn CookieStore>) -> bool {
+    fn is_logged_in(&self, cookie_store: &impl CookieStore) -> bool {
         cookie_store.cookies(&self.api_url).is_some()
     }
 
@@ -178,14 +176,14 @@ mod tests {
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
-            .withf(|url, form, _| url == EXPECTED_API_URL && is_login_form(&form, "FakeSharingId"))
+            .withf(|url, form, _| url == EXPECTED_API_URL && is_login_form(form, "FakeSharingId"))
             .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
         const PHOTO_COUNT: u32 = 3;
         client_mock
             .expect_post()
             .withf(|url, form, header| {
                 url == EXPECTED_API_URL
-                    && is_get_count_form(&form)
+                    && is_get_count_form(form)
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
             .return_once(|_, _, _| {
@@ -202,7 +200,7 @@ mod tests {
             .expect_post()
             .withf(|url, form, header| {
                 url == EXPECTED_API_URL
-                    && is_list_form(&form, &FIRST_PHOTO_INDEX.to_string(), "1")
+                    && is_list_form(form, &FIRST_PHOTO_INDEX.to_string(), "1")
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
             .return_once(|_, _, _| {
@@ -218,7 +216,7 @@ mod tests {
             .withf(|url, query| {
                 url == EXPECTED_API_URL
                     && is_get_photo_query(
-                        &query,
+                        query,
                         &FIRST_PHOTO_ID.to_string(),
                         "FakeSharingId",
                         FIRST_PHOTO_CACHE_KEY,
@@ -232,10 +230,9 @@ mod tests {
                     .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
                 Ok(get_photo_response)
             });
-        let cookie_store = Arc::new(Jar::default()) as Arc<dyn CookieStore>;
 
         /* Act */
-        let result = slideshow.get_next_photo((&client_mock, &cookie_store), DUMMY_RANDOM);
+        let result = slideshow.get_next_photo((&client_mock, &Jar::default()), DUMMY_RANDOM);
 
         /* Assert */
         assert!(result.is_ok());
@@ -259,12 +256,12 @@ mod tests {
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_login_form(&form, "FakeSharingId"))
+            .withf(|_, form, _| is_login_form(form, "FakeSharingId"))
             .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
         const PHOTO_COUNT: u32 = 142;
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_get_count_form(&form))
+            .withf(|_, form, _| is_get_count_form(form))
             .return_once(|_, _, _| {
                 Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![dto::Album {
@@ -277,7 +274,7 @@ mod tests {
         const RANDOM_PHOTO_CACHE_KEY: &str = "photo43";
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_list_form(&form, &FAKE_RANDOM_NUMBER.to_string(), "1"))
+            .withf(|_, form, _| is_list_form(form, &FAKE_RANDOM_NUMBER.to_string(), "1"))
             .return_once(|_, _, _| {
                 Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![test_helpers::new_photo_dto(
@@ -290,7 +287,7 @@ mod tests {
             .expect_get()
             .withf(|_, query| {
                 is_get_photo_query(
-                    &query,
+                    query,
                     &RANDOM_PHOTO_ID.to_string(),
                     "FakeSharingId",
                     RANDOM_PHOTO_CACHE_KEY,
@@ -304,7 +301,6 @@ mod tests {
                     .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
                 Ok(get_photo_response)
             });
-        let cookie_store = Arc::new(Jar::default()) as Arc<dyn CookieStore>;
 
         let random_mock: Random = (
             |range| {
@@ -315,7 +311,7 @@ mod tests {
         );
 
         /* Act */
-        let result = slideshow.get_next_photo((&client_mock, &cookie_store), random_mock);
+        let result = slideshow.get_next_photo((&client_mock, &Jar::default()), random_mock);
 
         /* Assert */
         assert!(result.is_ok());
@@ -335,12 +331,12 @@ mod tests {
             let mut client_mock = MockClient::new();
             client_mock
                 .expect_post()
-                .withf(|_, form, _| is_login_form(&form, "FakeSharingId"))
+                .withf(|_, form, _| is_login_form(form, "FakeSharingId"))
                 .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
             const PHOTO_COUNT: u32 = 142;
             client_mock
                 .expect_post()
-                .withf(|_, form, _| is_get_count_form(&form))
+                .withf(|_, form, _| is_get_count_form(form))
                 .return_once(|_, _, _| {
                     Ok(test_helpers::new_response_with_json(dto::List {
                         list: vec![dto::Album {
@@ -350,7 +346,7 @@ mod tests {
                 });
             client_mock
                 .expect_post()
-                .withf(|_, form, _| is_list_form(&form, "0", "1"))
+                .withf(|_, form, _| is_list_form(form, "0", "1"))
                 .return_once(|_, _, _| {
                     Ok(test_helpers::new_response_with_json(dto::List {
                         list: vec![test_helpers::new_photo_dto(43, "photo43")],
@@ -359,13 +355,7 @@ mod tests {
             client_mock
                 .expect_get()
                 .withf(move |_, query| {
-                    is_get_photo_query(
-                        &query,
-                        "43",
-                        "FakeSharingId",
-                        "photo43",
-                        &expected_size_param,
-                    )
+                    is_get_photo_query(query, "43", "FakeSharingId", "photo43", expected_size_param)
                 })
                 .return_once(|_, _| {
                     let mut get_photo_response = test_helpers::new_success_response();
@@ -374,10 +364,9 @@ mod tests {
                         .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
                     Ok(get_photo_response)
                 });
-            let cookie_store = Arc::new(Jar::default()) as Arc<dyn CookieStore>;
 
             /* Act */
-            let result = slideshow.get_next_photo((&client_mock, &cookie_store), DUMMY_RANDOM);
+            let result = slideshow.get_next_photo((&client_mock, &Jar::default()), DUMMY_RANDOM);
 
             /* Assert */
             assert!(result.is_ok());
@@ -400,7 +389,7 @@ mod tests {
             .expect_post()
             .withf(|url, form, header| {
                 url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi"
-                    && is_list_form(&form, &NEXT_PHOTO_INDEX.to_string(), "1")
+                    && is_list_form(form, &NEXT_PHOTO_INDEX.to_string(), "1")
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
             .return_once(|_, _, _| {
@@ -416,10 +405,10 @@ mod tests {
             .withf(|url, query| {
                 url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi"
                     && is_get_photo_query(
-                        &query,
+                        query,
                         &NEXT_PHOTO_ID.to_string(),
                         "FakeSharingId",
-                        &NEXT_PHOTO_CACHE_KEY,
+                        NEXT_PHOTO_CACHE_KEY,
                         "xl",
                     )
             })
@@ -457,7 +446,7 @@ mod tests {
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_list_form(&form, &NEXT_PHOTO_INDEX.to_string(), "1"))
+            .withf(|_, form, _| is_list_form(form, &NEXT_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
                 Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![test_helpers::new_photo_dto(
@@ -470,7 +459,7 @@ mod tests {
             .expect_get()
             .withf(|_, query| {
                 is_get_photo_query(
-                    &query,
+                    query,
                     &NEXT_PHOTO_ID.to_string(),
                     "FakeSharingId",
                     NEXT_PHOTO_CACHE_KEY,
@@ -486,7 +475,7 @@ mod tests {
             });
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_list_form(&form, &NEXT_NEXT_PHOTO_INDEX.to_string(), "1"))
+            .withf(|_, form, _| is_list_form(form, &NEXT_NEXT_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
                 Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![test_helpers::new_photo_dto(3, "photo3")],
@@ -498,7 +487,7 @@ mod tests {
             .expect_get()
             .withf(|_, query| {
                 is_get_photo_query(
-                    &query,
+                    query,
                     &NEXT_NEXT_PHOTO_ID.to_string(),
                     "FakeSharingId",
                     NEXT_NEXT_PHOTO_CACHE_KEY,
@@ -532,12 +521,12 @@ mod tests {
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_login_form(&form, "FakeSharingId"))
+            .withf(|_, form, _| is_login_form(form, "FakeSharingId"))
             .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
         const PHOTO_COUNT: u32 = 5;
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_get_count_form(&form))
+            .withf(|_, form, _| is_get_count_form(form))
             .return_once(|_, _, _| {
                 Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![dto::Album {
@@ -548,7 +537,7 @@ mod tests {
         const FIRST_PHOTO_INDEX: u32 = 3;
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_list_form(&form, &FIRST_PHOTO_INDEX.to_string(), "1"))
+            .withf(|_, form, _| is_list_form(form, &FIRST_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
                 Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![test_helpers::new_photo_dto(4, "photo4")],
@@ -556,7 +545,7 @@ mod tests {
             });
         client_mock
             .expect_get()
-            .withf(|_, query| is_get_photo_query(&query, "4", "FakeSharingId", "photo4", "xl"))
+            .withf(|_, query| is_get_photo_query(query, "4", "FakeSharingId", "photo4", "xl"))
             .return_once(|_, _| {
                 let mut get_photo_response = test_helpers::new_success_response();
                 get_photo_response
@@ -564,7 +553,6 @@ mod tests {
                     .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
                 Ok(get_photo_response)
             });
-        let cookie_store = Arc::new(Jar::default()) as Arc<dyn CookieStore>;
 
         let random_mock: Random = (
             |_| 0,
@@ -578,7 +566,7 @@ mod tests {
         );
 
         /* Act */
-        let result = slideshow.get_next_photo((&client_mock, &cookie_store), random_mock);
+        let result = slideshow.get_next_photo((&client_mock, &Jar::default()), random_mock);
 
         assert!(result.is_ok());
         assert_eq!(slideshow.photo_display_sequence, vec![5, 2, 4, 1]);
@@ -596,7 +584,7 @@ mod tests {
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_list_form(&form, &NEXT_PHOTO_INDEX.to_string(), "1"))
+            .withf(|_, form, _| is_list_form(form, &NEXT_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
                 Ok(
                     test_helpers::new_response_with_json::<dto::List<dto::Photo>>(dto::List {
@@ -607,7 +595,7 @@ mod tests {
         const NEW_PHOTO_COUNT: u32 = 3;
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_get_count_form(&form))
+            .withf(|_, form, _| is_get_count_form(form))
             .return_once(|_, _, _| {
                 Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![dto::Album {
@@ -621,7 +609,7 @@ mod tests {
         const FIRST_PHOTO_CACHE_KEY: &str = "photo1";
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_list_form(&form, &FIRST_PHOTO_INDEX.to_string(), "1"))
+            .withf(|_, form, _| is_list_form(form, &FIRST_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
                 Ok(test_helpers::new_response_with_json(dto::List {
                     list: vec![test_helpers::new_photo_dto(
@@ -634,7 +622,7 @@ mod tests {
             .expect_get()
             .withf(|_, query| {
                 is_get_photo_query(
-                    &query,
+                    query,
                     &FIRST_PHOTO_ID.to_string(),
                     "FakeSharingId",
                     FIRST_PHOTO_CACHE_KEY,
@@ -720,7 +708,7 @@ mod tests {
         ])
     }
 
-    fn logged_in_cookie_store(url: &str) -> Arc<dyn CookieStore> {
+    fn logged_in_cookie_store(url: &str) -> impl CookieStore {
         test_helpers::new_cookie_store(Some(url))
     }
 }

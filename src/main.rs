@@ -7,11 +7,11 @@ use simple_logger::SimpleLogger;
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
-    error::SynoPhotoFrameError,
-    http::{ClientBuilder, CookieStore, ReqwestClient},
+    error::{ErrorToString, SynoPhotoFrameError},
+    http::{ClientBuilder, ReqwestClient},
     logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
-    ErrorToString, Random,
+    Random,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -47,7 +47,7 @@ fn init_and_run() -> Result<(), SynoPhotoFrameError> {
     /* HTTP client */
     let cookie_store = Arc::new(reqwest::cookie::Jar::default());
     let client = ClientBuilder::new()
-        .cookie_provider(cookie_store.clone())
+        .cookie_provider(Arc::clone(&cookie_store))
         .timeout(Duration::from_secs(cli.timeout_seconds as u64))
         .build()
         .map_err_to_string()?;
@@ -80,7 +80,7 @@ fn init_and_run() -> Result<(), SynoPhotoFrameError> {
         &cli,
         (
             &LoggingClientDecorator::new(ReqwestClient::from(client)).with_level(log::Level::Trace),
-            &(cookie_store as Arc<dyn CookieStore>),
+            cookie_store.as_ref(),
         ),
         &mut sdl,
         (thread::sleep, random),

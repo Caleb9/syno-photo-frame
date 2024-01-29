@@ -9,7 +9,7 @@ pub(crate) use reqwest::cookie::Jar;
 
 use serde::de::DeserializeOwned;
 
-use crate::ErrorToString;
+use crate::error::ErrorToString;
 
 /// Isolates [reqwest::blocking::Client] for testing
 pub trait Client: Clone + Send {

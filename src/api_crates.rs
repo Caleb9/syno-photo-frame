@@ -1,5 +1,7 @@
-use crate::http::{Client, Response};
-use crate::ErrorToString;
+use crate::{
+    error::ErrorToString,
+    http::{Client, Response},
+};
 
 pub(crate) fn get_latest_version(client: &impl Client) -> Result<dto::Crate, String> {
     let response = client.get("https://index.crates.io/sy/no/syno-photo-frame", &[])?;

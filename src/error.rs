@@ -27,3 +27,14 @@ impl Display for SynoPhotoFrameError {
 }
 
 impl Error for SynoPhotoFrameError {}
+
+/// Maps [Result<T,E>] to [Result<T,String>]
+pub trait ErrorToString<T> {
+    fn map_err_to_string(self) -> Result<T, String>;
+}
+
+impl<T, E: Display> ErrorToString<T> for Result<T, E> {
+    fn map_err_to_string(self) -> Result<T, String> {
+        self.map_err(|e| e.to_string())
+    }
+}

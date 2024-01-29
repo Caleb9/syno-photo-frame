@@ -13,7 +13,7 @@ use sdl2::{
     EventPump, VideoSubsystem,
 };
 
-use crate::ErrorToString;
+use crate::error::ErrorToString;
 
 #[cfg_attr(test, mockall::automock)]
 /// Isolates [sdl2::Sdl] context for testing
@@ -39,7 +39,7 @@ pub enum TextureIndex {
     Next,
 }
 
-impl<'a> Sdl for SdlWrapper<'a> {
+impl Sdl for SdlWrapper<'_> {
     fn size(&self) -> (u32, u32) {
         self.size
     }

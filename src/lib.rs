@@ -3,10 +3,9 @@
 //! syno_photo_frame is a full-screen slideshow app for Synology Photos albums
 
 use std::{
-    fmt::Display,
     ops::Range,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Mutex,
     thread::{self, Scope, ScopedJoinHandle},
     time::{Duration, Instant},
 };
@@ -40,24 +39,23 @@ pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
 /// Slideshow loop
 pub fn run(
     cli: &Cli,
-    http: (&impl Client, &Arc<dyn CookieStore>),
+    http: (&impl Client, &impl CookieStore),
     sdl: &mut impl Sdl,
     (sleep, random): (fn(Duration), Random),
     installed_version: &str,
 ) -> Result<(), SynoPhotoFrameError> {
-    let slideshow = Arc::new(Mutex::new(
+    let slideshow = Mutex::new(
         Slideshow::try_from(&cli.share_link)?
             .with_password(&cli.password)
             .with_ordering(cli.order)
             .with_source_size(cli.source_size),
-    ));
+    );
 
+    show_welcome_screen(sdl, &cli.splash)?;
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
 
-    let mut show_update_notification = false;
-    /* Initialize slideshow by getting the first photo and starting with fade-in */
     thread::scope::<'_, _, Result<(), SynoPhotoFrameError>>(|thread_scope| {
-        show_welcome_screen(sdl, &cli.splash)?;
+        /* Initialize slideshow by getting the first photo and starting with fade-in */
         let first_photo_thread =
             get_next_photo_thread(&slideshow, http, sdl.size(), random, thread_scope);
         let check_for_updates_thread = is_update_available(
@@ -67,30 +65,31 @@ pub fn run(
             cli.disable_update_check,
         );
 
-        while !first_photo_thread.is_finished() {
+        while !(first_photo_thread.is_finished() && check_for_updates_thread.is_finished()) {
             sdl.handle_quit_event();
             /* Avoid maxing out CPU */
             const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
             sleep(LOOP_SLEEP_DURATION);
         }
-        show_update_notification = check_for_updates_thread.join().unwrap();
-        load_photo_from_thread_or_error_screen(first_photo_thread, sdl)
-    })?;
-    cli.transition.play(sdl, show_update_notification)?;
-    sdl.swap_textures();
+        load_photo_from_thread_or_error_screen(first_photo_thread, sdl)?;
+        let show_update_notification = check_for_updates_thread.join().unwrap();
+        cli.transition.play(sdl, show_update_notification)?;
+        sdl.swap_textures();
 
-    /* Continue indefinitely */
-    slideshow_loop(
-        http,
-        sdl,
-        &slideshow,
-        (
-            photo_change_interval,
-            cli.transition,
-            show_update_notification,
-        ),
-        (sleep, random),
-    )
+        /* Continue indefinitely */
+        slideshow_loop(
+            &slideshow,
+            http,
+            sdl,
+            (
+                photo_change_interval,
+                cli.transition,
+                show_update_notification,
+            ),
+            (sleep, random),
+            thread_scope,
+        )
+    })
 }
 
 fn show_welcome_screen(
@@ -117,20 +116,19 @@ fn show_welcome_screen(
 }
 
 fn get_next_photo_thread<'a>(
-    slideshow: &'a Arc<Mutex<Slideshow>>,
-    (client, cookie_store): (&'a impl Client, &Arc<dyn CookieStore>),
+    slideshow: &'a Mutex<Slideshow>,
+    (client, cookie_store): (&'a impl Client, &'a impl CookieStore),
     dimensions: (u32, u32),
     random: Random,
     thread_scope: &'a Scope<'a, '_>,
 ) -> ScopedJoinHandle<'a, Result<DynamicImage, SynoPhotoFrameError>> {
-    let (client, slideshow, cookie_store) =
-        (client.clone(), slideshow.clone(), cookie_store.clone());
+    let client = client.clone();
 
     thread_scope.spawn(move || {
         let bytes = slideshow
             .lock()
             .map_err(|error| SynoPhotoFrameError::Other(error.to_string()))?
-            .get_next_photo((&client, &cookie_store), random)?;
+            .get_next_photo((&client, cookie_store), random)?;
         let photo = img::load_from_memory(&bytes)?.fit_to_screen_and_add_background(dimensions);
         Ok(photo)
     })
@@ -152,36 +150,35 @@ fn load_photo_from_thread_or_error_screen(
     Ok(())
 }
 
-fn slideshow_loop(
-    http: (&impl Client, &Arc<dyn CookieStore>),
+fn slideshow_loop<'a>(
+    slideshow: &'a Mutex<Slideshow>,
+    http: (&'a impl Client, &'a impl CookieStore),
     sdl: &mut impl Sdl,
-    slideshow: &Arc<Mutex<Slideshow>>,
     (photo_change_interval, transition, show_update_notification): (Duration, Transition, bool),
     (sleep, random): (fn(Duration), Random),
+    thread_scope: &'a Scope<'a, '_>,
 ) -> Result<(), SynoPhotoFrameError> {
-    thread::scope(|thread_scope| {
-        let mut last_change = Instant::now();
-        let mut next_photo_thread =
-            get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
-        loop {
-            sdl.handle_quit_event();
+    let mut last_change = Instant::now();
+    let mut next_photo_thread =
+        get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
+    loop {
+        sdl.handle_quit_event();
 
-            let next_photo_is_ready = next_photo_thread.is_finished();
-            let elapsed_display_duration = Instant::now() - last_change;
-            if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
-                load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
-                transition.play(sdl, show_update_notification)?;
-                last_change = Instant::now();
-                sdl.swap_textures();
-                next_photo_thread =
-                    get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
-            } else {
-                /* Avoid maxing out CPU */
-                const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
-                sleep(LOOP_SLEEP_DURATION);
-            }
+        let next_photo_is_ready = next_photo_thread.is_finished();
+        let elapsed_display_duration = Instant::now() - last_change;
+        if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
+            load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
+            transition.play(sdl, show_update_notification)?;
+            last_change = Instant::now();
+            sdl.swap_textures();
+            next_photo_thread =
+                get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
+        } else {
+            /* Avoid maxing out CPU */
+            const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
+            sleep(LOOP_SLEEP_DURATION);
         }
-    })
+    }
 }
 
 fn is_update_available<'a>(
@@ -210,15 +207,4 @@ fn is_update_available<'a>(
         }
         false
     })
-}
-
-/// Maps [Result<T,E>] to [Result<T,String>]
-pub trait ErrorToString<T> {
-    fn map_err_to_string(self) -> Result<T, String>;
-}
-
-impl<T, E: Display> ErrorToString<T> for Result<T, E> {
-    fn map_err_to_string(self) -> Result<T, String> {
-        self.map_err(|e| e.to_string())
-    }
 }
