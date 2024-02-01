@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 #[cfg(test)]
 use mock_instant::Instant;
 
@@ -19,8 +21,9 @@ impl Transition {
     pub(crate) fn play(
         &self,
         sdl: &mut impl Sdl,
-        show_update_notification: bool,
+        is_update_available: &AtomicBool,
     ) -> Result<(), String> {
+        let show_update_notification = is_update_available.load(Ordering::Relaxed);
         match self {
             Transition::Crossfade => self.crossfade(sdl, show_update_notification),
             Transition::FadeToBlack => {
@@ -95,7 +98,7 @@ enum FadeToBlackPhase {
 }
 
 impl FadeToBlackPhase {
-    fn init_alpha(&self) -> f64 {
+    const fn init_alpha(&self) -> f64 {
         match self {
             FadeToBlackPhase::Out => TRANSITION_ALPHA_MIN,
             FadeToBlackPhase::In => TRANSITION_ALPHA_MAX,
@@ -118,7 +121,7 @@ impl FadeToBlackPhase {
         }
     }
 
-    fn texture_index(&self) -> TextureIndex {
+    const fn texture_index(&self) -> TextureIndex {
         match self {
             FadeToBlackPhase::Out => TextureIndex::Current,
             FadeToBlackPhase::In => TextureIndex::Next,
@@ -197,7 +200,7 @@ mod tests {
                     });
         }
 
-        let result = Transition::FadeToBlack.play(&mut sdl, true);
+        let result = Transition::FadeToBlack.play(&mut sdl, &true.into());
 
         assert!(result.is_ok());
         sdl.checkpoint();
@@ -243,7 +246,7 @@ mod tests {
                 });
         }
 
-        let result = Transition::Crossfade.play(&mut sdl, true);
+        let result = Transition::Crossfade.play(&mut sdl, &true.into());
 
         assert!(result.is_ok());
         sdl.checkpoint();
@@ -264,7 +267,9 @@ mod tests {
                 .returning(move || MockClock::advance(frame_duration));
             reset_clock();
 
-            Transition::FadeToBlack.play(&mut sdl, false).unwrap();
+            Transition::FadeToBlack
+                .play(&mut sdl, &false.into())
+                .unwrap();
 
             let fade_duration = MockClock::time();
             assert_eq!(fade_duration.as_secs(), 1);
@@ -286,7 +291,7 @@ mod tests {
                 .returning(move || MockClock::advance(frame_duration));
             reset_clock();
 
-            Transition::Crossfade.play(&mut sdl, false).unwrap();
+            Transition::Crossfade.play(&mut sdl, &false.into()).unwrap();
 
             let fade_duration = MockClock::time();
             assert_eq!(fade_duration.as_secs(), 1);
@@ -324,7 +329,9 @@ mod tests {
         sdl.expect_present_canvas()
             .returning(move || MockClock::advance(frame_duration));
 
-        Transition::FadeToBlack.play(&mut sdl, false).unwrap();
+        Transition::FadeToBlack
+            .play(&mut sdl, &false.into())
+            .unwrap();
 
         sdl.checkpoint();
     }
@@ -360,7 +367,7 @@ mod tests {
         sdl.expect_present_canvas()
             .returning(move || MockClock::advance(frame_duration));
 
-        Transition::Crossfade.play(&mut sdl, false).unwrap();
+        Transition::Crossfade.play(&mut sdl, &false.into()).unwrap();
 
         sdl.checkpoint();
     }
@@ -388,7 +395,7 @@ mod tests {
             reset_clock();
             const SHOW_UPDATE_NOTIFICATION: bool = false;
 
-            let result = sut.play(&mut sdl, SHOW_UPDATE_NOTIFICATION);
+            let result = sut.play(&mut sdl, &SHOW_UPDATE_NOTIFICATION.into());
 
             assert!(result.is_ok());
             sdl.checkpoint();

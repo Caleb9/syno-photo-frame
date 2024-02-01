@@ -142,7 +142,7 @@ impl From<(u32, u32)> for Dimensions {
 }
 
 impl Dimensions {
-    fn new(w: f64, h: f64) -> Self {
+    const fn new(w: f64, h: f64) -> Self {
         Self { w, h }
     }
 

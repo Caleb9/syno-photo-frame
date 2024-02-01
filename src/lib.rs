@@ -5,7 +5,10 @@
 use std::{
     ops::Range,
     path::PathBuf,
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
     thread::{self, Scope, ScopedJoinHandle},
     time::{Duration, Instant},
 };
@@ -44,48 +47,28 @@ pub fn run(
     (sleep, random): (fn(Duration), Random),
     installed_version: &str,
 ) -> Result<(), SynoPhotoFrameError> {
+    show_welcome_screen(sdl, &cli.splash)?;
+
     let slideshow = Mutex::new(
         Slideshow::try_from(&cli.share_link)?
             .with_password(&cli.password)
             .with_ordering(cli.order)
             .with_source_size(cli.source_size),
     );
-
-    show_welcome_screen(sdl, &cli.splash)?;
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
+    let is_update_available = &AtomicBool::new(false);
 
     thread::scope::<'_, _, Result<(), SynoPhotoFrameError>>(|thread_scope| {
-        /* Initialize slideshow by getting the first photo and starting with fade-in */
-        let first_photo_thread =
-            get_next_photo_thread(&slideshow, http, sdl.size(), random, thread_scope);
-        let check_for_updates_thread = is_update_available(
-            http.0,
-            installed_version,
-            thread_scope,
-            cli.disable_update_check,
-        );
-
-        while !(first_photo_thread.is_finished() && check_for_updates_thread.is_finished()) {
-            sdl.handle_quit_event();
-            /* Avoid maxing out CPU */
-            const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
-            sleep(LOOP_SLEEP_DURATION);
+        if !cli.disable_update_check {
+            check_for_updates(http.0, installed_version, is_update_available, thread_scope);
         }
-        load_photo_from_thread_or_error_screen(first_photo_thread, sdl)?;
-        let show_update_notification = check_for_updates_thread.join().unwrap();
-        cli.transition.play(sdl, show_update_notification)?;
-        sdl.swap_textures();
 
-        /* Continue indefinitely */
         slideshow_loop(
             &slideshow,
             http,
             sdl,
-            (
-                photo_change_interval,
-                cli.transition,
-                show_update_notification,
-            ),
+            (photo_change_interval, cli.transition),
+            is_update_available,
             (sleep, random),
             thread_scope,
         )
@@ -113,6 +96,64 @@ fn show_welcome_screen(
     sdl.copy_texture_to_canvas(TextureIndex::Current)?;
     sdl.present_canvas();
     Ok(())
+}
+
+fn check_for_updates<'a>(
+    client: &'a impl Client,
+    installed_version: &'a str,
+    is_update_available: &'a AtomicBool,
+    thread_scope: &'a Scope<'a, '_>,
+) -> ScopedJoinHandle<'a, ()> {
+    let client = client.clone();
+    thread_scope.spawn(move || {
+        match api_crates::get_latest_version(&client) {
+            Ok(remote_crate) => {
+                if remote_crate.vers != installed_version {
+                    is_update_available.store(true, Ordering::Relaxed);
+                    log::info!(
+                        "New version is available ({installed_version} -> {})",
+                        remote_crate.vers
+                    );
+                }
+            }
+            Err(error) => {
+                log::error!("Check for updates: {error}");
+            }
+        };
+    })
+}
+
+fn slideshow_loop<'a>(
+    slideshow: &'a Mutex<Slideshow>,
+    http: (&'a impl Client, &'a impl CookieStore),
+    sdl: &mut impl Sdl,
+    (photo_change_interval, transition): (Duration, Transition),
+    is_update_available: &AtomicBool,
+    (sleep, random): (fn(Duration), Random),
+    thread_scope: &'a Scope<'a, '_>,
+) -> Result<(), SynoPhotoFrameError> {
+    /* Load first photo as soon as it's ready. */
+    let mut last_change = Instant::now() - photo_change_interval;
+    let mut next_photo_thread =
+        get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
+    loop {
+        sdl.handle_quit_event();
+
+        let next_photo_is_ready = next_photo_thread.is_finished();
+        let elapsed_display_duration = Instant::now() - last_change;
+        if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
+            load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
+            transition.play(sdl, is_update_available)?;
+            last_change = Instant::now();
+            sdl.swap_textures();
+            next_photo_thread =
+                get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
+        } else {
+            /* Avoid maxing out CPU */
+            const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
+            sleep(LOOP_SLEEP_DURATION);
+        }
+    }
 }
 
 fn get_next_photo_thread<'a>(
@@ -148,63 +189,4 @@ fn load_photo_from_thread_or_error_screen(
     };
     sdl.update_texture(photo_or_error.as_bytes(), TextureIndex::Next)?;
     Ok(())
-}
-
-fn slideshow_loop<'a>(
-    slideshow: &'a Mutex<Slideshow>,
-    http: (&'a impl Client, &'a impl CookieStore),
-    sdl: &mut impl Sdl,
-    (photo_change_interval, transition, show_update_notification): (Duration, Transition, bool),
-    (sleep, random): (fn(Duration), Random),
-    thread_scope: &'a Scope<'a, '_>,
-) -> Result<(), SynoPhotoFrameError> {
-    let mut last_change = Instant::now();
-    let mut next_photo_thread =
-        get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
-    loop {
-        sdl.handle_quit_event();
-
-        let next_photo_is_ready = next_photo_thread.is_finished();
-        let elapsed_display_duration = Instant::now() - last_change;
-        if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
-            load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
-            transition.play(sdl, show_update_notification)?;
-            last_change = Instant::now();
-            sdl.swap_textures();
-            next_photo_thread =
-                get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
-        } else {
-            /* Avoid maxing out CPU */
-            const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
-            sleep(LOOP_SLEEP_DURATION);
-        }
-    }
-}
-
-fn is_update_available<'a>(
-    client: &'a impl Client,
-    installed_version: &'a str,
-    thread_scope: &'a Scope<'a, '_>,
-    skip_check: bool,
-) -> ScopedJoinHandle<'a, bool> {
-    let client = client.clone();
-    thread_scope.spawn(move || {
-        if !skip_check {
-            match api_crates::get_latest_version(&client) {
-                Ok(remote_crate) => {
-                    if remote_crate.vers != installed_version {
-                        log::info!(
-                            "New version is available ({installed_version} -> {})",
-                            remote_crate.vers
-                        );
-                        return true;
-                    }
-                }
-                Err(error) => {
-                    log::error!("Check for updates: {error}");
-                }
-            };
-        }
-        false
-    })
 }

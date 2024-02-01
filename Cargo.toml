@@ -1,6 +1,6 @@
 [package]
 name = "syno-photo-frame"
-version = "0.10.1"
+version = "0.10.2"
 edition = "2021"
 description = "Full-screen slideshow for Synology Photos albums"
 license = "GPL-3.0-or-later"
@@ -18,7 +18,7 @@ rust-version = "1.70"
 exclude = [
     "doc/",
     "dpkg/",
-    "images/*.xcf"
+    "assets/*.xcf"
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -40,7 +40,7 @@ I wrote this app for a DIY digital photo frame project using
 my Synology NAS over LAN.
 
 Why not use Synology Photos in a web browser directly? There are two
-reasons. First, current version of Synology Photos (1.6.1 at the time
+reasons. First, current version of Synology Photos (1.6.x at the time
 of writing) does not allow slideshow speed adjustments, and changes
 photo every 3 or 4 seconds - way too fast for a photo frame. Second,
 running a full www browser is more resource demanding than a simple
@@ -132,7 +132,9 @@ apt install -y \
 	libssl-dev'
 ```
 
-Install the app from [crates.io](https://crates.io/crates/syno-photo-frame):
+Install the app from
+[crates.io](https://crates.io/crates/syno-photo-frame) (you can use
+the same command to update the app when new version gets published):
 ```
 cargo install syno-photo-frame
 ```
@@ -204,6 +206,17 @@ solution, e.g. for Raspberry Pi Zero I'm using [Witty Pi 3
 Mini](https://www.adafruit.com/product/5038).
 
 
+### Auto Brightness
+
+For my digital photo frame project I attached a light sensor to Pi's
+GPIO to adjust monitor's brightness automatically depending on ambient
+light. [TSL2591](https://www.adafruit.com/product/1980) is an example
+of such sensor. Check out my
+[auto-brightness-rpi-tsl2591](https://github.com/Caleb9/auto-brightness-rpi-tsl2591)
+project to add automatic brightness control to your digital photo
+frame.
+
+
 ### Start Slideshow From Random Photo and Random Order
 
 By default photos are displayed in the order of shooting date. If the
@@ -230,17 +243,6 @@ values.
 You can replace the default image displayed during loading of first
 photo. Use the `--splash` option to point the app to a .jpeg file
 location.
-
-
-### Auto Brightness
-
-For my digital photo frame project I attached a light sensor to Pi's
-GPIO to adjust monitor's brightness automatically depending on ambient
-light. [TSL2591](https://www.adafruit.com/product/1980) is an example
-of such sensor. Check out my
-[auto-brightness-rpi-tsl2591](https://github.com/Caleb9/auto-brightness-rpi-tsl2591)
-project to add automatic brightness control to your digital photo
-frame.
 
 
 ## Supported By

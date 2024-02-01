@@ -85,7 +85,5 @@ fn init_and_run() -> Result<(), SynoPhotoFrameError> {
         &mut sdl,
         (thread::sleep, random),
         installed_version,
-    )?;
-
-    Ok(())
+    )
 }
