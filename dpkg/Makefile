@@ -1,12 +1,9 @@
-# The script assumes building on arm64 linux platform
-
 # Extract package version from Cargo.toml unless specified as
 # environment variable
 VERSION?=$(shell sed -n 's/^version = "\(\S*\)"$$/\1/p' ../Cargo.toml)
 
+arch=$(shell dpkg --print-architecture)
 name=syno-photo-frame
-arch=arm64
-
 dpkg_name=$(name)_$(VERSION)_$(arch)
 
 all:
@@ -19,8 +16,9 @@ all:
 	@cp control $(dpkg_name)/DEBIAN/
 	@mkdir -p $(dpkg_name)/usr/share/doc/$(name)
 	@cp copyright $(dpkg_name)/usr/share/doc/$(name)
-# Set version in package control file
+# Set version and architecture in package control file
 	@sed -i 's/^Version: 0.0.0/Version: $(VERSION)/' $(dpkg_name)/DEBIAN/control
+	@sed -i 's/^Architecture:/Architecture: $(arch)/' $(dpkg_name)/DEBIAN/control
 # Trim the binary
 	@objcopy --strip-debug --strip-unneeded ../target/release/$(name) $(dpkg_name)/bin/$(name)
 	@gzip -c --best -k -n changelog > $(dpkg_name)/usr/share/doc/$(name)/changelog.gz

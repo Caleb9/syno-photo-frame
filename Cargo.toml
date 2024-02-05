@@ -6,7 +6,7 @@ description = "Full-screen slideshow for Synology Photos albums"
 license = "GPL-3.0-or-later"
 authors = ["Piotr Karasinski"]
 readme = "README.md"
-repository = "https://github.com/Caleb9/syno-photo-frame"
+repository = "https://github.com/caleb9/syno-photo-frame"
 keywords = [
     "synology",
     "synology-photos",
@@ -16,7 +16,9 @@ keywords = [
 ]
 rust-version = "1.70"
 exclude = [
+    ".*",
     "doc/",
+    "Dockerfile",
     "dpkg/",
     "assets/*.xcf"
 ]
