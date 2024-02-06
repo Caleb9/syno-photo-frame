@@ -21,15 +21,16 @@ __If you like the project, give it a star ⭐, or consider becoming a__
     - [Raspberry Pi](#raspberry-pi)
       - [Option 1: Install From Debian Package](#option-1-install-from-debian-package)
       - [Option 2: Build From Source](#option-2-build-from-source)
+        - [Alternative: Build With Docker](#alternative-build-with-docker)
   - [Run](#run)
   - [Optional Stuff](#optional-stuff)
     - [Increase swap size on Raspberry Pi Zero](#increase-swap-size-on-raspberry-pi-zero)
     - [Auto-start](#auto-start)
     - [Startup-Shutdown Schedule](#startup-shutdown-schedule)
+    - [Auto Brightness](#auto-brightness)
     - [Start Slideshow From Random Photo and Random Order](#start-slideshow-from-random-photo-and-random-order)
     - [Change Transition Effect](#change-transition-effect)
     - [Customize splash-screen](#customize-splash-screen)
-    - [Auto Brightness](#auto-brightness)
   - [Supported By](#supported-by)
 
 ## Why?
@@ -82,11 +83,12 @@ Synology Photos) and you can access the command line on your Pi.
 #### Option 1: Install From Debian Package
 
 [Releases](https://github.com/Caleb9/syno-photo-frame/releases)
-contains pre-built .deb packages for aarch64 Linux architecture, which
+contains pre-built .deb packages for arm64 Linux architecture, which
 should work on Raspberry Pi 3 and up, as well as Zero 2 (assuming
-64bit version of Raspbian OS Bookworm is installed).
+64bit version of Raspbian OS *Bookworm* is installed).
 
-* Check the architecture with `uname -m`, it should return "aarch64".
+* Check the architecture with `dpkg --print-architecture`, it should
+  print "arm64".
 * Check the installed version of Debian with `lsb_release -c` and make
   sure it says "bookworm".
 
@@ -94,22 +96,23 @@ __For other platforms (including older versions of Debian, such as
 "bullseye") you must build the project from source - see [Option 2:
 Build From Source](#option-2-build-from-source)__.
 
-Download the `syno-photo-frame_X.Y.Z_arm64.deb` package from Releases.
+1. Download the `syno-photo-frame_X.Y.Z_arm64.deb` package from
+   Releases.
 
-Update the system
+2. Update the system
 
-```
-sudo -- sh -c ' \
-apt update && \
-apt upgrade -y'
-```
+   ```
+   sudo -- sh -c ' \
+   apt update && \
+   apt upgrade -y'
+   ```
 
-`cd` to directory where the package has been downloaded and install
-the app (adjust the filename appropriately):
+3. `cd` to directory where the package has been downloaded and install
+   the app:
 
-```
-sudo apt install ./syno-photo-frame_0.10.0_arm64.deb
-```
+   ```
+   sudo apt install ./syno-photo-frame_*_arm64.deb
+   ```
 
 
 #### Option 2: Build From Source
@@ -118,26 +121,30 @@ Note: These instructions assume Debian based Linux distribution, but
 adjusting them should make it possible to build the app for almost any
 platform where Rust and [SDL](https://www.libsdl.org/) are available.
 
-[Install Rust](https://www.rust-lang.org/tools/install) if you have
-not already.
+1. [Install Rust](https://www.rust-lang.org/tools/install) if you have
+   not already (or use the [Alternative: Build With
+   Docker](#alternative-build-with-docker) approach).
 
-Install build dependencies:
-```
-sudo -- sh -c ' \
-apt update && \
-apt upgrade -y && \
-apt install -y \
-	libsdl2-dev \
-	libsdl2-ttf-dev \
-	libssl-dev'
-```
+2. Install build dependencies:
 
-Install the app from
-[crates.io](https://crates.io/crates/syno-photo-frame) (you can use
-the same command to update the app when new version gets published):
-```
-cargo install syno-photo-frame
-```
+   ```
+   sudo -- sh -c ' \
+   apt update && \
+   apt upgrade -y && \
+   apt install -y \
+       libsdl2-dev \
+       libsdl2-ttf-dev \
+       libssl-dev'
+   ```
+
+3. Install the app from
+   [crates.io](https://crates.io/crates/syno-photo-frame) (you can use
+   the same command to update the app when new version gets
+   published):
+   
+   ```
+   cargo install syno-photo-frame
+   ```
 
 When building is finished, the binary is then located at
 `$HOME/.cargo/bin/syno-photo-frame` and should be available on your
@@ -145,6 +152,7 @@ When building is finished, the binary is then located at
 
 Alternatively, clone the git repository and build the project with (in
 cloned directory):
+
 ```
 cargo build --release
 ```
@@ -152,14 +160,24 @@ cargo build --release
 The binary is then located at `target/release/syno-photo-frame`.
 
 
+##### Alternative: Build With Docker
+
+If you don't want to install Rust for some reason, but have Docker
+available, you can build the binary and/or Debian package in a
+container using the provided [Dockerfile](Dockerfile). See
+instructions in the file to build the app this way.
+
+
 ## Run
 
 Display help message to see various available options:
+
 ```
 syno-photo-frame --help
 ```
 
 Run the app:
+
 ```
 syno-photo-frame {sharing link to Synology Photos album}
 ```
@@ -179,10 +197,13 @@ Pi](https://pimylifeup.com/raspberry-pi-swap-file/).
 ### Auto-start
 
 To start the slideshow automatically on boot, you can add it to crontab:
+
 ```
 crontab -e
 ```
+
 Add something like this at the end of crontab:
+
 ```
 @reboot    sleep 5 && /bin/syno-photo-frame https://{share_link} >> /tmp/syno-photo-frame.log 2>&1
 ```
