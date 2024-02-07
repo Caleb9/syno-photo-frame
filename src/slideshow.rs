@@ -62,46 +62,49 @@ impl<'a> Slideshow<'a> {
             api_photos::login(client, &self.api_url, &self.sharing_id, self.password)
                 .map_err(SynoPhotoFrameError::Login)?;
         }
+        loop {
+            if self.slideshow_ended() {
+                self.initialize(client, random)?;
+            }
 
-        if self.slideshow_ended() {
-            self.initialize(client, random)?;
-        }
-
-        let photo_index = self
-            .photo_display_sequence
-            .pop()
-            .expect("photos should not be empty");
-        let photos = api_photos::get_album_contents(
-            client,
-            &self.api_url,
-            &self.sharing_id,
-            photo_index,
-            1.try_into().unwrap(),
-        )
-        .map_err(|error| SynoPhotoFrameError::Other(error.to_string()))?;
-
-        if let Some(photo) = photos.first() {
-            match api_photos::get_photo(
+            let photo_index = self
+                .photo_display_sequence
+                .pop()
+                .expect("photos should not be empty");
+            let photo = api_photos::get_album_contents(
                 client,
                 &self.api_url,
                 &self.sharing_id,
-                (
-                    photo.id,
-                    &photo.additional.thumbnail.cache_key,
-                    self.source_size,
-                ),
-            ) {
-                Ok(photo_bytes) => Ok(photo_bytes),
-                Err(PhotosApiError::InvalidHttpResponse(StatusCode::NOT_FOUND)) => {
-                    /* Photo has been removed since we fetched its metadata, try next one */
-                    self.get_next_photo((client, cookie_store), random)
+                photo_index,
+                1.try_into().unwrap(),
+            )
+            .map_err(|error| SynoPhotoFrameError::Other(error.to_string()))?
+            .pop();
+
+            if let Some(photo) = photo {
+                let photo_bytes_result = api_photos::get_photo(
+                    client,
+                    &self.api_url,
+                    &self.sharing_id,
+                    (
+                        photo.id,
+                        &photo.additional.thumbnail.cache_key,
+                        self.source_size,
+                    ),
+                );
+                match photo_bytes_result {
+                    Ok(photo_bytes) => break Ok(photo_bytes),
+                    Err(PhotosApiError::InvalidHttpResponse(StatusCode::NOT_FOUND)) => {
+                        /* Photo has been removed since we fetched its metadata, try next one. */
+                        continue;
+                    }
+                    Err(error) => break Err(SynoPhotoFrameError::Other(error.to_string())),
                 }
-                Err(error) => Err(SynoPhotoFrameError::Other(error.to_string())),
+            } else {
+                /* Photos were removed from the album since we fetched its item_count. Reinitialize */
+                self.photo_display_sequence.clear();
+                continue;
             }
-        } else {
-            /* Photos were removed from the album since we fetched its item_count. Reinitialize */
-            self.photo_display_sequence = vec![];
-            self.get_next_photo((client, cookie_store), random)
         }
     }
 
@@ -125,17 +128,17 @@ impl<'a> Slideshow<'a> {
         let photos_range = 0..item_count;
         match self.order {
             Order::ByDate => {
-                self.photo_display_sequence = photos_range.rev().collect();
+                self.photo_display_sequence.extend(photos_range.rev());
             }
             Order::RandomStart => {
                 let random_start = rand_gen_range(0..item_count);
-                self.photo_display_sequence =
-                    photos_range.skip(random_start as usize).rev().collect();
+                self.photo_display_sequence
+                    .extend(photos_range.skip(random_start as usize).rev());
                 /* RandomStart is only used when slideshow starts, and afterward continues in normal order */
                 self.order = Order::ByDate;
             }
             Order::Random => {
-                self.photo_display_sequence = photos_range.collect();
+                self.photo_display_sequence.extend(photos_range);
                 rand_shuffle(&mut self.photo_display_sequence);
             }
         }
