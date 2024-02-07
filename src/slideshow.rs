@@ -147,10 +147,11 @@ impl<'a> Slideshow<'a> {
     }
 
     fn get_photos_count(&self, client: &impl Client) -> Result<u32, String> {
-        let albums = api_photos::get_album_contents_count(client, &self.api_url, &self.sharing_id)
-            .map_err_to_string()?;
-        if let Some(Album { item_count }) = albums.first() {
-            Ok(*item_count)
+        let album = api_photos::get_album_contents_count(client, &self.api_url, &self.sharing_id)
+            .map_err_to_string()?
+            .pop();
+        if let Some(Album { item_count }) = album {
+            Ok(item_count)
         } else {
             Err("Album not found".to_string())
         }

@@ -1,33 +1,33 @@
 ##
-# This file can be used to cross-compile e.g. from an amd64 machine to
-# arm64 (Raspberry Pi), or to build the app without installing Rust
-# locally.
+# This file can be used to cross-compile, for example, from an amd64
+# machine to arm64 (Raspberry Pi) or to build the app without
+# installing Rust and build dependencies locally.
 #
 # To cross-compile the Debian package, you need a builder supporting
-# the target platform. E.g. to build for arm64 run the following
-# command once to create the builder:
+# the target platform. For example, to build for arm64, run the
+# following command once to create the builder:
 #
 #     docker buildx create --name cross --bootstrap --platform linux/arm64
 #
-# Build Debian package and copy it to current directory:
+# Build the Debian package and copy it to the current directory:
 #
 #     docker build . --builder cross --platform linux/arm64 --target=dpkg --output type=local,dest=.
 #
-# Build just the binary (note that in order to execute it afterwards,
+# Build just the binary (note that to execute it afterwards,
 # libsdl2-2.0.0 and libsdl2-ttf-2.0.0 dependency packages need to be
 # installed):
 #
 #     docker build . --builder cross --platform linux/arm64 --target=bin --output type=local,dest=.
 #
-# To build for current architecture (not cross-compile) you can use
-# the default builder (skip the `docker buildx` command above) and
+# To build for the current architecture (not cross-compile), you can
+# use the default builder (skip the `docker buildx` command above) and
 # omit the `--builder` and `--platform` options.
 #
-# To build for Debian bullseye change the build stage base image
+# To build for Debian bullseye, change the build stage base image
 # (`FROM ...`) to rust:bullseye.
 #
-# To cross compile for 32bit Raspberry Pi use the `--platform
-# linux/arm/v7` option in the commands above.
+# To cross-compile for 32bit Raspberry Pi, use the
+# `--platform linux/arm/v7` option in the commands above.
 ##
 
 FROM rust:bookworm as build
@@ -47,8 +47,8 @@ WORKDIR /workspace/dpkg
 RUN make
 
 # The following two stages can be used as --target options for `docker
-# build` so it is possible to extract the artifacts from Docker images
-# to local file-system
+# build`, making it possible to extract the artifacts from Docker
+# images to the local file system.
 FROM scratch as dpkg
 COPY --from=build /workspace/dpkg/syno-photo-frame_*.deb .
 

@@ -132,7 +132,7 @@ fn slideshow_loop<'a>(
     (sleep, random): (fn(Duration), Random),
     thread_scope: &'a Scope<'a, '_>,
 ) -> Result<(), SynoPhotoFrameError> {
-    /* Load first photo as soon as it's ready. */
+    /* Load the first photo as soon as it's ready. */
     let mut last_change = Instant::now() - photo_change_interval;
     let mut next_photo_thread =
         get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
