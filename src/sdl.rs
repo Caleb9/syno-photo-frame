@@ -15,8 +15,8 @@ use sdl2::{
 
 use crate::error::ErrorToString;
 
-#[cfg_attr(test, mockall::automock)]
 /// Isolates [sdl2::Sdl] context for testing
+#[cfg_attr(test, mockall::automock)]
 pub trait Sdl {
     /// Gets screen size
     fn size(&self) -> (u32, u32);

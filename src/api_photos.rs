@@ -1,4 +1,8 @@
-use std::{error::Error, fmt::Display, sync::OnceLock};
+use std::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+    sync::OnceLock,
+};
 
 use bytes::Bytes;
 use regex::Regex;
@@ -15,7 +19,7 @@ use PhotosApiError::{InvalidApiResponse, InvalidHttpResponse};
 pub(crate) struct SharingId(String);
 
 impl Display for SharingId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -100,11 +104,29 @@ impl TryFrom<u32> for Limit {
 }
 
 impl Display for Limit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SortBy {
+    TakenTime,
+    FileName,
+}
+
+impl Display for SortBy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SortBy::FileName => "filename",
+                SortBy::TakenTime => "takentime",
+            }
+        )
+    }
+}
 /// Gets metadata for photos contained in an album
 pub(crate) fn get_album_contents(
     client: &impl Client,
@@ -112,6 +134,7 @@ pub(crate) fn get_album_contents(
     sharing_id: &SharingId,
     offset: u32,
     limit: Limit,
+    sort_by: SortBy,
 ) -> Result<Vec<dto::Photo>, PhotosApiError> {
     let params = [
         ("api", "SYNO.Foto.Browse.Item"),
@@ -120,7 +143,7 @@ pub(crate) fn get_album_contents(
         ("additional", "[\"thumbnail\"]"),
         ("offset", &offset.to_string()),
         ("limit", &limit.to_string()),
-        ("sort_by", "takentime"),
+        ("sort_by", &sort_by.to_string()),
         ("sort_direction", "asc"),
     ];
     let response = client.post(
@@ -176,10 +199,10 @@ where
     S: FnOnce(R) -> Result<T, PhotosApiError>,
 {
     let status = response.status();
-    if !status.is_success() {
-        Err(InvalidHttpResponse(status))
-    } else {
+    if status.is_success() {
         on_success(response)
+    } else {
+        Err(InvalidHttpResponse(status))
     }
 }
 
@@ -191,7 +214,7 @@ pub enum PhotosApiError {
 }
 
 impl Display for PhotosApiError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             PhotosApiError::Reqwest(ref reqwest_error) => write!(f, "{reqwest_error}"),
             InvalidHttpResponse(ref status) => {

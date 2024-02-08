@@ -53,6 +53,7 @@ pub fn run(
         Slideshow::try_from(&cli.share_link)?
             .with_password(&cli.password)
             .with_ordering(cli.order)
+            .with_random_start(cli.random_start)
             .with_source_size(cli.source_size),
     );
     let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);

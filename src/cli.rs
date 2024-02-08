@@ -33,6 +33,10 @@ pub struct Cli {
     #[arg(short = 'o', long, value_enum, default_value_t = Order::ByDate)]
     pub order: Order,
 
+    /// Start at randomly selected photo, then continue according to --order
+    #[arg(long, default_value_t = false)]
+    pub random_start: bool,
+
     /// Transition effect
     #[arg(short = 't', long, value_enum, default_value_t = Transition::Crossfade)]
     pub transition: Transition,
@@ -63,10 +67,14 @@ pub struct Cli {
 pub enum Order {
     /// ordered by photo shooting date
     ByDate,
-    /// ordered by photo shooting date but starting at randomly selected photo
-    RandomStart,
+    /// ordered by photo file name
+    ByName,
     /// in random order
     Random,
+    /// ordered by photo shooting date but starting at randomly selected photo
+    /// [DEPRECATED: this order value will be removed in the next version, use the --random-start option instead]
+    #[deprecated]
+    RandomStart, // TODO: remove this in next release
 }
 
 /// Transition to next photo effect

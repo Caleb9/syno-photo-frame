@@ -4,6 +4,7 @@ use log::LevelFilter;
 use rand::{self, seq::SliceRandom, Rng};
 use simple_logger::SimpleLogger;
 
+use syno_photo_frame::cli::Order;
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
@@ -43,6 +44,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn init_and_run() -> Result<(), SynoPhotoFrameError> {
     let cli = Cli::parse();
+
+    if cli.order == Order::RandomStart {
+        log::warn!(
+            "Deprecated `--order random-start` option used. It will get removed in next version. \
+             Use `--random-start` instead."
+        )
+    }
 
     /* HTTP client */
     let cookie_store = Arc::new(reqwest::cookie::Jar::default());

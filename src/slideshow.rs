@@ -1,7 +1,7 @@
 use bytes::Bytes;
 
 use crate::{
-    api_photos::{self, dto::Album, PhotosApiError, SharingId},
+    api_photos::{self, dto::Album, PhotosApiError, SharingId, SortBy},
     cli::{Order, SourceSize},
     error::{ErrorToString, SynoPhotoFrameError},
     http::{Client, CookieStore, StatusCode, Url},
@@ -17,6 +17,7 @@ pub(crate) struct Slideshow<'a> {
     /// Indices of photos in an album in reverse order (so we can pop them off easily)
     photo_display_sequence: Vec<u32>,
     order: Order,
+    random_start: bool,
     source_size: SourceSize,
 }
 
@@ -32,6 +33,7 @@ impl<'a> TryFrom<&Url> for Slideshow<'a> {
             password: &None,
             photo_display_sequence: vec![],
             order: Order::ByDate,
+            random_start: false,
             source_size: SourceSize::L,
         })
     }
@@ -45,6 +47,11 @@ impl<'a> Slideshow<'a> {
 
     pub(crate) fn with_ordering(mut self, order: Order) -> Self {
         self.order = order;
+        self
+    }
+
+    pub(crate) fn with_random_start(mut self, random_start: bool) -> Self {
+        self.random_start = random_start;
         self
     }
 
@@ -77,6 +84,7 @@ impl<'a> Slideshow<'a> {
                 &self.sharing_id,
                 photo_index,
                 1.try_into().unwrap(),
+                self.order.into(),
             )
             .map_err(|error| SynoPhotoFrameError::Other(error.to_string()))?
             .pop();
@@ -121,25 +129,32 @@ impl<'a> Slideshow<'a> {
         client: &impl Client,
         (rand_gen_range, rand_shuffle): Random,
     ) -> Result<(), String> {
+        assert!(
+            self.photo_display_sequence.is_empty(),
+            "already initialized"
+        );
         let item_count = self.get_photos_count(client)?;
         if item_count < 1 {
             return Err("Album is empty".to_string());
         }
         let photos_range = 0..item_count;
         match self.order {
-            Order::ByDate => {
-                self.photo_display_sequence.extend(photos_range.rev());
-            }
-            Order::RandomStart => {
-                let random_start = rand_gen_range(0..item_count);
-                self.photo_display_sequence
-                    .extend(photos_range.skip(random_start as usize).rev());
-                /* RandomStart is only used when slideshow starts, and afterward continues in normal order */
-                self.order = Order::ByDate;
+            Order::ByDate | Order::ByName | Order::RandomStart => {
+                if self.random_start || self.order == Order::RandomStart {
+                    self.photo_display_sequence.extend(
+                        photos_range
+                            .skip(rand_gen_range(0..item_count) as usize)
+                            .rev(),
+                    );
+                    /* RandomStart is only used when slideshow starts, and afterward continues in normal order */
+                    self.random_start = false;
+                } else {
+                    self.photo_display_sequence.extend(photos_range.rev());
+                }
             }
             Order::Random => {
                 self.photo_display_sequence.extend(photos_range);
-                rand_shuffle(&mut self.photo_display_sequence);
+                rand_shuffle(&mut self.photo_display_sequence)
             }
         }
 
@@ -154,6 +169,17 @@ impl<'a> Slideshow<'a> {
             Ok(item_count)
         } else {
             Err("Album not found".to_string())
+        }
+    }
+}
+
+impl From<Order> for SortBy {
+    fn from(value: Order) -> Self {
+        match value {
+            /* Random is not an option in the API. Randomization is implemented client-side and
+             * essentially makes the sort_by query parameter irrelevant. */
+            Order::ByDate | Order::Random | Order::RandomStart => SortBy::TakenTime,
+            Order::ByName => SortBy::FileName,
         }
     }
 }
@@ -252,11 +278,11 @@ mod tests {
     }
 
     #[test]
-    fn when_random_start_order_then_get_next_photo_starts_by_sending_login_request_and_fetches_random_photo(
+    fn when_random_start_then_get_next_photo_starts_by_sending_login_request_and_fetches_random_photo(
     ) {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
-        let mut slideshow = new_slideshow(SHARE_LINK).with_ordering(Order::RandomStart);
+        let mut slideshow = new_slideshow(SHARE_LINK).with_random_start(true);
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()

@@ -1,3 +1,10 @@
+syno-photo-frame (0.11.0) stable; urgency=low
+  [Piotr Karasinski ]
+  * Add `--order by-name` and `--random-start`
+  * Deprecate `--order random-start`
+
+ -- Piotr-Karasinski <7767011+Caleb9@users.noreply.github.com>  Sat, 10 Feb 2024 12:00:00 +0200
+
 syno-photo-frame (0.10.2) stable; urgency=low
   [Piotr Karasinski ]
   * Display first photo independently from checking for updates
