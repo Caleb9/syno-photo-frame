@@ -71,10 +71,6 @@ pub enum Order {
     ByName,
     /// in random order
     Random,
-    /// ordered by photo shooting date but starting at randomly selected photo
-    /// [DEPRECATED: this order value will be removed in the next version, use the --random-start option instead]
-    #[deprecated]
-    RandomStart, // TODO: remove this in next release
 }
 
 /// Transition to next photo effect

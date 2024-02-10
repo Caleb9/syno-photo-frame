@@ -12,7 +12,7 @@ use serde::de::DeserializeOwned;
 use crate::error::ErrorToString;
 
 /// Isolates [reqwest::blocking::Client] for testing
-pub trait Client: Clone + Send {
+pub trait Client {
     type Response: Response;
 
     fn post(
@@ -89,10 +89,7 @@ impl Response for ReqwestResponse {
         self.response.status()
     }
 
-    fn json<T>(self) -> Result<T, String>
-    where
-        T: DeserializeOwned,
-    {
+    fn json<T: DeserializeOwned>(self) -> Result<T, String> {
         self.response.json().map_err_to_string()
     }
 

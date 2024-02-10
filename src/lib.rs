@@ -40,9 +40,9 @@ mod test_helpers;
 pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
 
 /// Slideshow loop
-pub fn run(
+pub fn run<C: Client + Clone + Send>(
     cli: &Cli,
-    http: (&impl Client, &impl CookieStore),
+    http: (&C, &impl CookieStore),
     sdl: &mut impl Sdl,
     (sleep, random): (fn(Duration), Random),
     installed_version: &str,
@@ -50,7 +50,7 @@ pub fn run(
     show_welcome_screen(sdl, &cli.splash)?;
 
     let slideshow = Mutex::new(
-        Slideshow::try_from(&cli.share_link)?
+        Slideshow::new(&cli.share_link)?
             .with_password(&cli.password)
             .with_ordering(cli.order)
             .with_random_start(cli.random_start)
@@ -61,7 +61,7 @@ pub fn run(
 
     thread::scope::<'_, _, Result<(), SynoPhotoFrameError>>(|thread_scope| {
         if !cli.disable_update_check {
-            check_for_updates(http.0, installed_version, is_update_available, thread_scope);
+            check_for_updates_thread(http.0, installed_version, is_update_available, thread_scope);
         }
 
         slideshow_loop(
@@ -99,8 +99,8 @@ fn show_welcome_screen(
     Ok(())
 }
 
-fn check_for_updates<'a>(
-    client: &'a impl Client,
+fn check_for_updates_thread<'a, C: Client + Clone + Send>(
+    client: &'a C,
     installed_version: &'a str,
     is_update_available: &'a AtomicBool,
     thread_scope: &'a Scope<'a, '_>,
@@ -124,9 +124,9 @@ fn check_for_updates<'a>(
     })
 }
 
-fn slideshow_loop<'a>(
+fn slideshow_loop<'a, C: Client + Clone + Send>(
     slideshow: &'a Mutex<Slideshow>,
-    http: (&'a impl Client, &'a impl CookieStore),
+    http: (&'a C, &'a impl CookieStore),
     sdl: &mut impl Sdl,
     (photo_change_interval, transition): (Duration, Transition),
     is_update_available: &AtomicBool,
@@ -137,14 +137,21 @@ fn slideshow_loop<'a>(
     let mut last_change = Instant::now() - photo_change_interval;
     let mut next_photo_thread =
         get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
+    let mut show_update_notification = false;
     loop {
         sdl.handle_quit_event();
+
+        if !show_update_notification && is_update_available.load(Ordering::Relaxed) {
+            show_update_notification = true;
+            sdl.copy_update_notification_to_canvas()?;
+            sdl.present_canvas();
+        }
 
         let next_photo_is_ready = next_photo_thread.is_finished();
         let elapsed_display_duration = Instant::now() - last_change;
         if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
             load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
-            transition.play(sdl, is_update_available)?;
+            transition.play(sdl, show_update_notification)?;
             last_change = Instant::now();
             sdl.swap_textures();
             next_photo_thread =
@@ -157,13 +164,15 @@ fn slideshow_loop<'a>(
     }
 }
 
-fn get_next_photo_thread<'a>(
+type GetPhotoJoinHandle<'a> = ScopedJoinHandle<'a, Result<DynamicImage, SynoPhotoFrameError>>;
+
+fn get_next_photo_thread<'a, C: Client + Clone + Send>(
     slideshow: &'a Mutex<Slideshow>,
-    (client, cookie_store): (&'a impl Client, &'a impl CookieStore),
+    (client, cookie_store): (&'a C, &'a impl CookieStore),
     dimensions: (u32, u32),
     random: Random,
     thread_scope: &'a Scope<'a, '_>,
-) -> ScopedJoinHandle<'a, Result<DynamicImage, SynoPhotoFrameError>> {
+) -> GetPhotoJoinHandle<'a> {
     let client = client.clone();
 
     thread_scope.spawn(move || {
@@ -177,7 +186,7 @@ fn get_next_photo_thread<'a>(
 }
 
 fn load_photo_from_thread_or_error_screen(
-    get_photo_thread: ScopedJoinHandle<'_, Result<DynamicImage, SynoPhotoFrameError>>,
+    get_photo_thread: GetPhotoJoinHandle<'_>,
     sdl: &mut impl Sdl,
 ) -> Result<(), SynoPhotoFrameError> {
     let photo_or_error = match get_photo_thread.join().unwrap() {

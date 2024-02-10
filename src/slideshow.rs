@@ -21,10 +21,8 @@ pub(crate) struct Slideshow<'a> {
     source_size: SourceSize,
 }
 
-impl<'a> TryFrom<&Url> for Slideshow<'a> {
-    type Error = String;
-
-    fn try_from(share_link: &Url) -> Result<Slideshow<'a>, Self::Error> {
+impl<'a> Slideshow<'a> {
+    pub(crate) fn new(share_link: &Url) -> Result<Slideshow<'a>, String> {
         let (api_url, sharing_id) = api_photos::parse_share_link(share_link)?;
 
         Ok(Slideshow {
@@ -37,9 +35,7 @@ impl<'a> TryFrom<&Url> for Slideshow<'a> {
             source_size: SourceSize::L,
         })
     }
-}
 
-impl<'a> Slideshow<'a> {
     pub(crate) fn with_password(mut self, password: &'a Option<String>) -> Self {
         self.password = password;
         self
@@ -139,8 +135,8 @@ impl<'a> Slideshow<'a> {
         }
         let photos_range = 0..item_count;
         match self.order {
-            Order::ByDate | Order::ByName | Order::RandomStart => {
-                if self.random_start || self.order == Order::RandomStart {
+            Order::ByDate | Order::ByName => {
+                if self.random_start {
                     self.photo_display_sequence.extend(
                         photos_range
                             .skip(rand_gen_range(0..item_count) as usize)
@@ -178,7 +174,7 @@ impl From<Order> for SortBy {
         match value {
             /* Random is not an option in the API. Randomization is implemented client-side and
              * essentially makes the sort_by query parameter irrelevant. */
-            Order::ByDate | Order::Random | Order::RandomStart => SortBy::TakenTime,
+            Order::ByDate | Order::Random => SortBy::TakenTime,
             Order::ByName => SortBy::FileName,
         }
     }
@@ -685,7 +681,7 @@ mod tests {
     fn new_slideshow(share_link: &str) -> Slideshow {
         let share_link = Url::parse(share_link).unwrap();
 
-        Slideshow::try_from(&share_link).unwrap()
+        Slideshow::new(&share_link).unwrap()
     }
 
     fn is_login_form(form: &[(&str, &str)], sharing_id: &str) -> bool {

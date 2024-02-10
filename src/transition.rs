@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-
 #[cfg(test)]
 use mock_instant::Instant;
 
@@ -21,18 +19,15 @@ impl Transition {
     pub(crate) fn play(
         &self,
         sdl: &mut impl Sdl,
-        is_update_available: &AtomicBool,
+        show_update_notification: bool,
     ) -> Result<(), String> {
-        let show_update_notification = is_update_available.load(Ordering::Relaxed);
         match self {
-            Transition::Crossfade => self.crossfade(sdl, show_update_notification),
+            Transition::Crossfade => {
+                self.crossfade(sdl, show_update_notification)?;
+            }
             Transition::FadeToBlack => {
-                if !self.fade_to_black(sdl, FadeToBlackPhase::Out, show_update_notification)?
-                    || !self.fade_to_black(sdl, FadeToBlackPhase::In, show_update_notification)?
-                {
-                    return Ok(());
-                }
-                Ok(())
+                self.fade_to_black(sdl, FadeToBlackPhase::Out, show_update_notification)?;
+                self.fade_to_black(sdl, FadeToBlackPhase::In, show_update_notification)?;
             }
             Transition::None => {
                 sdl.copy_texture_to_canvas(TextureIndex::Next)?;
@@ -40,9 +35,9 @@ impl Transition {
                     sdl.copy_update_notification_to_canvas()?;
                 }
                 sdl.present_canvas();
-                Ok(())
             }
         }
+        Ok(())
     }
 
     fn crossfade(&self, sdl: &mut impl Sdl, show_update_notification: bool) -> Result<(), String> {
@@ -72,7 +67,7 @@ impl Transition {
         sdl: &mut impl Sdl,
         phase: FadeToBlackPhase,
         show_update_notification: bool,
-    ) -> Result<bool, String> {
+    ) -> Result<(), String> {
         let mut delta;
         let mut alpha = phase.init_alpha();
         let mut last = Instant::now();
@@ -88,7 +83,7 @@ impl Transition {
             }
             sdl.present_canvas();
         }
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -144,63 +139,41 @@ mod tests {
     fn fade_to_black_play_calls_canvas_methods_in_sequence() {
         let mut sdl = MockSdl::default();
         /* First iteration steps alpha by 0 */
-        const EXPECTED_FADE_OUT_ITERATIONS: usize = 16;
-        const EXPECTED_FADE_IN_ITERATIONS: usize = 16;
+        const EXPECTED_PHASE_ITERATIONS: usize = 16;
 
         sdl.expect_handle_quit_event()
-            .times(EXPECTED_FADE_OUT_ITERATIONS + EXPECTED_FADE_IN_ITERATIONS)
+            .times(2 * EXPECTED_PHASE_ITERATIONS)
             .return_const(());
-        let mut canvas_seq = Sequence::default();
+        let mut sdl_seq = Sequence::default();
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
-        for _ in 0..EXPECTED_FADE_OUT_ITERATIONS {
-            sdl.expect_copy_texture_to_canvas()
-                .withf(|index| index == &TextureIndex::Current)
-                .once()
-                .in_sequence(&mut canvas_seq)
-                .return_const(Ok(()));
-            sdl.expect_fill_canvas()
-                .once()
-                .in_sequence(&mut canvas_seq)
-                .return_const(Ok(()));
-            sdl.expect_copy_update_notification_to_canvas()
-                .once()
-                .in_sequence(&mut canvas_seq)
-                .return_const(Ok(()));
-            sdl.expect_present_canvas()
+        for texture_index in [&TextureIndex::Current, &TextureIndex::Next] {
+            for _ in 0..EXPECTED_PHASE_ITERATIONS {
+                sdl.expect_copy_texture_to_canvas()
+                    .withf(move |index| index == texture_index)
                     .once()
-                    .in_sequence(&mut canvas_seq)
+                    .in_sequence(&mut sdl_seq)
+                    .return_const(Ok(()));
+                sdl.expect_fill_canvas()
+                    .once()
+                    .in_sequence(&mut sdl_seq)
+                    .return_const(Ok(()));
+                sdl.expect_copy_update_notification_to_canvas()
+                    .once()
+                    .in_sequence(&mut sdl_seq)
+                    .return_const(Ok(()));
+                sdl.expect_present_canvas()
+                    .once()
+                    .in_sequence(&mut sdl_seq)
                     .returning(move || {
                         /* Simulate time passing between calls to Instant::now(), i.e. time it takes to process and
                          * display a frame. Here we pretend that approximately 30 FPS can be achieved. */
                         MockClock::advance(frame_duration)
                     });
-        }
-        for _ in 0..EXPECTED_FADE_IN_ITERATIONS {
-            sdl.expect_copy_texture_to_canvas()
-                .withf(|index| index == &TextureIndex::Next)
-                .once()
-                .in_sequence(&mut canvas_seq)
-                .return_const(Ok(()));
-            sdl.expect_fill_canvas()
-                .once()
-                .in_sequence(&mut canvas_seq)
-                .return_const(Ok(()));
-            sdl.expect_copy_update_notification_to_canvas()
-                .once()
-                .in_sequence(&mut canvas_seq)
-                .return_const(Ok(()));
-            sdl.expect_present_canvas()
-                    .once()
-                    .in_sequence(&mut canvas_seq)
-                    .returning(move || {
-                        /* Simulate time passing between calls to Instant::now(), i.e. time it takes to process and
-                         * display a frame. Here we pretend that approximately 30 FPS can be achieved. */
-                        MockClock::advance(frame_duration)
-                    });
+            }
         }
 
-        let result = Transition::FadeToBlack.play(&mut sdl, &true.into());
+        let result = Transition::FadeToBlack.play(&mut sdl, true);
 
         assert!(result.is_ok());
         sdl.checkpoint();
@@ -214,31 +187,31 @@ mod tests {
         sdl.expect_handle_quit_event()
             .times(EXPECTED_ITERATIONS)
             .return_const(());
-        let mut canvas_seq = Sequence::default();
+        let mut sdl_seq = Sequence::default();
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
         for _ in 0..EXPECTED_ITERATIONS {
             sdl.expect_copy_texture_to_canvas()
                 .withf(|index| index == &TextureIndex::Current)
                 .once()
-                .in_sequence(&mut canvas_seq)
+                .in_sequence(&mut sdl_seq)
                 .return_const(Ok(()));
             sdl.expect_set_texture_alpha()
                 .once()
-                .in_sequence(&mut canvas_seq)
+                .in_sequence(&mut sdl_seq)
                 .return_const(());
             sdl.expect_copy_texture_to_canvas()
                 .withf(|index| index == &TextureIndex::Next)
                 .once()
-                .in_sequence(&mut canvas_seq)
+                .in_sequence(&mut sdl_seq)
                 .return_const(Ok(()));
             sdl.expect_copy_update_notification_to_canvas()
                 .once()
-                .in_sequence(&mut canvas_seq)
+                .in_sequence(&mut sdl_seq)
                 .return_const(Ok(()));
             sdl.expect_present_canvas()
                 .once()
-                .in_sequence(&mut canvas_seq)
+                .in_sequence(&mut sdl_seq)
                 .returning(move || {
                     /* Simulate time passing between calls to Instant::now(), i.e. time it takes to process and
                      * display a frame. Here we pretend that approximately 30 FPS can be achieved. */
@@ -246,7 +219,7 @@ mod tests {
                 });
         }
 
-        let result = Transition::Crossfade.play(&mut sdl, &true.into());
+        let result = Transition::Crossfade.play(&mut sdl, true);
 
         assert!(result.is_ok());
         sdl.checkpoint();
@@ -267,9 +240,7 @@ mod tests {
                 .returning(move || MockClock::advance(frame_duration));
             reset_clock();
 
-            Transition::FadeToBlack
-                .play(&mut sdl, &false.into())
-                .unwrap();
+            Transition::FadeToBlack.play(&mut sdl, false).unwrap();
 
             let fade_duration = MockClock::time();
             assert_eq!(fade_duration.as_secs(), 1);
@@ -291,7 +262,7 @@ mod tests {
                 .returning(move || MockClock::advance(frame_duration));
             reset_clock();
 
-            Transition::Crossfade.play(&mut sdl, &false.into()).unwrap();
+            Transition::Crossfade.play(&mut sdl, false).unwrap();
 
             let fade_duration = MockClock::time();
             assert_eq!(fade_duration.as_secs(), 1);
@@ -305,12 +276,14 @@ mod tests {
         sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
+        let mut sdl_seq = Sequence::default();
         let alpha_prefix = [0, 17, 34];
         for alpha in alpha_prefix {
             /* Check alpha value for first 3 calls to fill_canvas. */
             sdl.expect_fill_canvas()
-                .once()
                 .withf(move |color| *color == Color::RGBA(0, 0, 0, alpha))
+                .once()
+                .in_sequence(&mut sdl_seq)
                 .return_const(Ok(()));
         }
         /* Set up calls between first and last 3 iterations */
@@ -322,16 +295,15 @@ mod tests {
         for alpha in alpha_postfix {
             /* Check alpha value for last 3 calls to fill_canvas. */
             sdl.expect_fill_canvas()
-                .once()
                 .withf(move |color| *color == Color::RGBA(0, 0, 0, alpha))
+                .once()
+                .in_sequence(&mut sdl_seq)
                 .return_const(Ok(()));
         }
         sdl.expect_present_canvas()
             .returning(move || MockClock::advance(frame_duration));
 
-        Transition::FadeToBlack
-            .play(&mut sdl, &false.into())
-            .unwrap();
+        Transition::FadeToBlack.play(&mut sdl, false).unwrap();
 
         sdl.checkpoint();
     }
@@ -343,12 +315,14 @@ mod tests {
         sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
+        let mut sdl_seq = Sequence::default();
         let alpha_prefix: [u8; 3] = [0, 8, 17];
         for alpha in alpha_prefix {
             /* Check alpha value for first 3 calls to fill_canvas. */
             sdl.expect_set_texture_alpha()
-                .once()
                 .withf(move |a, i| a == &alpha && i == &TextureIndex::Next)
+                .once()
+                .in_sequence(&mut sdl_seq)
                 .return_const(());
         }
         /* Set up calls between first and last 3 iterations */
@@ -356,18 +330,20 @@ mod tests {
         let alpha_postfix: [u8; 3] = [238, 246, 255];
         sdl.expect_set_texture_alpha()
             .times(EXPECTED_ITERATIONS - alpha_prefix.len() - alpha_postfix.len())
+            .in_sequence(&mut sdl_seq)
             .return_const(());
         for alpha in alpha_postfix {
             /* Check alpha value for last 3 calls to fill_canvas. */
             sdl.expect_set_texture_alpha()
-                .once()
                 .withf(move |a, i| a == &alpha && i == &TextureIndex::Next)
+                .once()
+                .in_sequence(&mut sdl_seq)
                 .return_const(());
         }
         sdl.expect_present_canvas()
             .returning(move || MockClock::advance(frame_duration));
 
-        Transition::Crossfade.play(&mut sdl, &false.into()).unwrap();
+        Transition::Crossfade.play(&mut sdl, false).unwrap();
 
         sdl.checkpoint();
     }
@@ -395,7 +371,7 @@ mod tests {
             reset_clock();
             const SHOW_UPDATE_NOTIFICATION: bool = false;
 
-            let result = sut.play(&mut sdl, &SHOW_UPDATE_NOTIFICATION.into());
+            let result = sut.play(&mut sdl, SHOW_UPDATE_NOTIFICATION);
 
             assert!(result.is_ok());
             sdl.checkpoint();

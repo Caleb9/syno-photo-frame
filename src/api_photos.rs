@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
+    ops::Deref,
     sync::OnceLock,
 };
 
@@ -18,9 +19,11 @@ use PhotosApiError::{InvalidApiResponse, InvalidHttpResponse};
 #[derive(Debug)]
 pub(crate) struct SharingId(String);
 
-impl Display for SharingId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+impl Deref for SharingId {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -45,7 +48,7 @@ pub(crate) fn login(
         ("api", "SYNO.Core.Sharing.Login"),
         ("method", "login"),
         ("version", "1"),
-        ("sharing_id", &sharing_id.0),
+        ("sharing_id", sharing_id),
         ("password", password.as_deref().unwrap_or_default()),
     ];
     let response = client.post(api_url.as_str(), &params, None)?;
@@ -72,7 +75,7 @@ pub(crate) fn get_album_contents_count(
     let response = client.post(
         api_url.as_str(),
         &params,
-        Some(("X-SYNO-SHARING", &sharing_id.0)),
+        Some(("X-SYNO-SHARING", sharing_id)),
     )?;
     read_response(response, |response| {
         let dto = response.json::<dto::ApiResponse<dto::List<dto::Album>>>()?;
@@ -103,9 +106,11 @@ impl TryFrom<u32> for Limit {
     }
 }
 
-impl Display for Limit {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+impl Deref for Limit {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -127,6 +132,7 @@ impl Display for SortBy {
         )
     }
 }
+
 /// Gets metadata for photos contained in an album
 pub(crate) fn get_album_contents(
     client: &impl Client,
@@ -149,7 +155,7 @@ pub(crate) fn get_album_contents(
     let response = client.post(
         api_url.as_str(),
         &params,
-        Some(("X-SYNO-SHARING", &sharing_id.0)),
+        Some(("X-SYNO-SHARING", sharing_id)),
     )?;
     read_response(response, |response| {
         let dto = response.json::<dto::ApiResponse<dto::List<dto::Photo>>>()?;
@@ -180,7 +186,7 @@ pub(crate) fn get_photo(
         ("api", "SYNO.Foto.Thumbnail"),
         ("method", "get"),
         ("version", "2"),
-        ("_sharing_id", &sharing_id.0),
+        ("_sharing_id", sharing_id),
         ("id", &photo_id.to_string()),
         ("cache_key", photo_cache_key),
         ("type", "unit"),
