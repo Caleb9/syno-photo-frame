@@ -26,8 +26,12 @@
 # To build for Debian bullseye, change the build stage base image
 # (`FROM ...`) to rust:bullseye.
 #
-# To cross-compile for 32bit Raspberry Pi, use the
-# `--platform linux/arm/v7` option in the commands above.
+# To cross-compile for 32bit Raspberry Pi, use the `--platform
+# linux/arm/v7` option in the commands above. Note that currently it's
+# not possible to cross-compile for arm/v6 (so e.g. RPi Zero) since
+# Rust does not provide a Docker image for that architecture (see
+# https://github.com/rust-lang/docker-rust/issues/54). The only option
+# for RPi Zero seems to be a native compilation, which is VERY slow.
 ##
 
 FROM rust:bookworm as build
