@@ -1,13 +1,17 @@
 //! Errors
 
-use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+};
 
 use crate::api_photos::PhotosApiError;
 
 #[derive(Debug)]
 pub enum SynoPhotoFrameError {
+    /// Error logging in to Synology Photos that results in app termination
     Login(PhotosApiError),
+    /// Any other error that is not login and doesn't result in a panic will be logged and handled
     Other(String),
 }
 

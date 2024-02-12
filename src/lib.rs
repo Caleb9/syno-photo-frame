@@ -4,21 +4,20 @@
 
 use std::{
     ops::Range,
-    path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
-    thread::{self, Scope, ScopedJoinHandle},
+    sync::mpsc::{self, Receiver, SyncSender},
+    thread::{self, Scope},
     time::{Duration, Instant},
 };
 
-use cli::{Cli, Transition};
-use error::SynoPhotoFrameError;
-use http::{Client, CookieStore};
-use img::{DynamicImage, Framed};
-use sdl::{Sdl, TextureIndex};
-use slideshow::Slideshow;
+use crate::{
+    cli::{Cli, Rotation},
+    error::SynoPhotoFrameError,
+    http::{Client, CookieStore},
+    img::{DynamicImage, Framed},
+    sdl::{Sdl, TextureIndex},
+    slideshow::Slideshow,
+    update::UpdateNotification,
+};
 
 pub mod cli;
 pub mod error;
@@ -32,6 +31,7 @@ mod asset;
 mod img;
 mod slideshow;
 mod transition;
+mod update;
 
 #[cfg(test)]
 mod test_helpers;
@@ -39,56 +39,44 @@ mod test_helpers;
 /// Functions for randomized slideshow ordering
 pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
 
+type Result<T> = core::result::Result<T, SynoPhotoFrameError>;
+
 /// Slideshow loop
 pub fn run<C: Client + Clone + Send>(
     cli: &Cli,
-    http: (&C, &impl CookieStore),
+    (client, cookie_store): (&C, &impl CookieStore),
     sdl: &mut impl Sdl,
     (sleep, random): (fn(Duration), Random),
     installed_version: &str,
-) -> Result<(), SynoPhotoFrameError> {
-    show_welcome_screen(sdl, &cli.splash)?;
+) -> Result<()> {
+    let current_image = show_welcome_screen(sdl, cli)?;
 
-    let slideshow = Mutex::new(
-        Slideshow::new(&cli.share_link)?
-            .with_password(&cli.password)
-            .with_ordering(cli.order)
-            .with_random_start(cli.random_start)
-            .with_source_size(cli.source_size),
-    );
-    let photo_change_interval = Duration::from_secs(cli.interval_seconds as u64);
-    let is_update_available = &AtomicBool::new(false);
-
-    thread::scope::<'_, _, Result<(), SynoPhotoFrameError>>(|thread_scope| {
+    thread::scope::<'_, _, Result<()>>(|thread_scope| {
+        let (update_tx, update_rx) = mpsc::sync_channel(1);
         if !cli.disable_update_check {
-            check_for_updates_thread(http.0, installed_version, is_update_available, thread_scope);
+            update::check_for_updates_thread(client, installed_version, thread_scope, update_tx);
         }
 
         slideshow_loop(
-            &slideshow,
-            http,
-            sdl,
-            (photo_change_interval, cli.transition),
-            is_update_available,
+            (client, cookie_store),
+            (sdl, current_image),
+            cli,
             (sleep, random),
-            thread_scope,
+            update_rx,
         )
     })
 }
 
-fn show_welcome_screen(
-    sdl: &mut impl Sdl,
-    custom_splash: &Option<PathBuf>,
-) -> Result<(), SynoPhotoFrameError> {
-    let welcome_img = match custom_splash {
-        None => asset::welcome_image(sdl.size())?,
+fn show_welcome_screen(sdl: &mut impl Sdl, cli: &Cli) -> Result<DynamicImage> {
+    let welcome_img = match &cli.splash {
+        None => asset::welcome_screen(sdl.size(), cli.rotation)?,
         Some(path) => {
             let (w, h) = sdl.size();
             match img::open(path) {
                 Ok(image) => image.resize_exact(w, h, image::imageops::FilterType::Nearest),
                 Err(error) => {
                     log::error!("Splashscreen {}: {error}", path.to_string_lossy());
-                    asset::welcome_image(sdl.size())?
+                    asset::welcome_screen(sdl.size(), cli.rotation)?
                 }
             }
         }
@@ -96,107 +84,102 @@ fn show_welcome_screen(
     sdl.update_texture(welcome_img.as_bytes(), TextureIndex::Current)?;
     sdl.copy_texture_to_canvas(TextureIndex::Current)?;
     sdl.present_canvas();
-    Ok(())
+    Ok(welcome_img)
 }
 
-fn check_for_updates_thread<'a, C: Client + Clone + Send>(
-    client: &'a C,
-    installed_version: &'a str,
-    is_update_available: &'a AtomicBool,
-    thread_scope: &'a Scope<'a, '_>,
-) -> ScopedJoinHandle<'a, ()> {
-    let client = client.clone();
-    thread_scope.spawn(move || {
-        match api_crates::get_latest_version(&client) {
-            Ok(remote_crate) => {
-                if remote_crate.vers != installed_version {
-                    is_update_available.store(true, Ordering::Relaxed);
-                    log::info!(
-                        "New version is available ({installed_version} -> {})",
-                        remote_crate.vers
-                    );
+fn slideshow_loop<C: Client + Clone + Send>(
+    http: (&C, &impl CookieStore),
+    (sdl, mut current_image): (&mut impl Sdl, DynamicImage),
+    cli: &Cli,
+    (sleep, random): (fn(Duration), Random),
+    update_rx: Receiver<bool>,
+) -> Result<()> {
+    /* Load the first photo as soon as it's ready. */
+    let mut last_change = Instant::now() - cli.photo_change_interval;
+    let mut update_notification = UpdateNotification::new(sdl.size(), cli.rotation)?;
+    let screen_size = sdl.size();
+    let (photo_tx, photo_rx) = mpsc::sync_channel(1);
+    const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
+
+    thread::scope::<'_, _, Result<()>>(|thread_scope| {
+        photo_fetcher_thread(http, screen_size, cli, random, thread_scope, photo_tx)?;
+
+        loop {
+            sdl.handle_quit_event();
+
+            if let Ok(true) = update_rx.try_recv() {
+                update_notification.is_visible = true;
+                update_notification.show_on_current_image(&mut current_image, sdl)?;
+            }
+
+            let elapsed_display_duration = Instant::now() - last_change;
+            if elapsed_display_duration < cli.photo_change_interval {
+                sleep(LOOP_SLEEP_DURATION);
+                continue;
+            }
+
+            if let Ok(next_photo_result) = photo_rx.try_recv() {
+                let mut next_photo =
+                    load_photo_or_error_screen(next_photo_result, screen_size, cli.rotation)?;
+                if update_notification.is_visible {
+                    update_notification.overlay(&mut next_photo);
                 }
+                sdl.update_texture(next_photo.as_bytes(), TextureIndex::Next)?;
+                cli.transition.play(sdl)?;
+
+                last_change = Instant::now();
+
+                sdl.swap_textures();
+                current_image = next_photo;
+            } else {
+                sleep(LOOP_SLEEP_DURATION);
             }
-            Err(error) => {
-                log::error!("Check for updates: {error}");
-            }
-        };
+        }
     })
 }
 
-fn slideshow_loop<'a, C: Client + Clone + Send>(
-    slideshow: &'a Mutex<Slideshow>,
-    http: (&'a C, &'a impl CookieStore),
-    sdl: &mut impl Sdl,
-    (photo_change_interval, transition): (Duration, Transition),
-    is_update_available: &AtomicBool,
-    (sleep, random): (fn(Duration), Random),
-    thread_scope: &'a Scope<'a, '_>,
-) -> Result<(), SynoPhotoFrameError> {
-    /* Load the first photo as soon as it's ready. */
-    let mut last_change = Instant::now() - photo_change_interval;
-    let mut next_photo_thread =
-        get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
-    let mut show_update_notification = false;
-    loop {
-        sdl.handle_quit_event();
-
-        if !show_update_notification && is_update_available.load(Ordering::Relaxed) {
-            show_update_notification = true;
-            sdl.copy_update_notification_to_canvas()?;
-            sdl.present_canvas();
-        }
-
-        let next_photo_is_ready = next_photo_thread.is_finished();
-        let elapsed_display_duration = Instant::now() - last_change;
-        if elapsed_display_duration >= photo_change_interval && next_photo_is_ready {
-            load_photo_from_thread_or_error_screen(next_photo_thread, sdl)?;
-            transition.play(sdl, show_update_notification)?;
-            last_change = Instant::now();
-            sdl.swap_textures();
-            next_photo_thread =
-                get_next_photo_thread(slideshow, http, sdl.size(), random, thread_scope);
-        } else {
-            /* Avoid maxing out CPU */
-            const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
-            sleep(LOOP_SLEEP_DURATION);
-        }
-    }
-}
-
-type GetPhotoJoinHandle<'a> = ScopedJoinHandle<'a, Result<DynamicImage, SynoPhotoFrameError>>;
-
-fn get_next_photo_thread<'a, C: Client + Clone + Send>(
-    slideshow: &'a Mutex<Slideshow>,
+fn photo_fetcher_thread<'a, C: Client + Clone + Send>(
     (client, cookie_store): (&'a C, &'a impl CookieStore),
-    dimensions: (u32, u32),
+    screen_size: (u32, u32),
+    cli: &'a Cli,
     random: Random,
     thread_scope: &'a Scope<'a, '_>,
-) -> GetPhotoJoinHandle<'a> {
+    photo_tx: SyncSender<Result<DynamicImage>>,
+) -> Result<()> {
+    let mut slideshow = new_slideshow(cli)?;
     let client = client.clone();
-
-    thread_scope.spawn(move || {
-        let bytes = slideshow
-            .lock()
-            .map_err(|error| SynoPhotoFrameError::Other(error.to_string()))?
-            .get_next_photo((&client, cookie_store), random)?;
-        let photo = img::load_from_memory(&bytes)?.fit_to_screen_and_add_background(dimensions);
-        Ok(photo)
-    })
+    thread_scope.spawn(move || loop {
+        let photo_result = slideshow
+            .get_next_photo((&client, cookie_store), random)
+            .and_then(|bytes| img::load_from_memory(&bytes).map_err(SynoPhotoFrameError::Other))
+            .map(|image| image.fit_to_screen_and_add_background(screen_size, cli.rotation));
+        /* Blocks until photo is received by the main thread */
+        photo_tx.send(photo_result).unwrap();
+    });
+    Ok(())
 }
 
-fn load_photo_from_thread_or_error_screen(
-    get_photo_thread: GetPhotoJoinHandle<'_>,
-    sdl: &mut impl Sdl,
-) -> Result<(), SynoPhotoFrameError> {
-    let photo_or_error = match get_photo_thread.join().unwrap() {
-        Ok(photo) => photo,
+fn new_slideshow(cli: &Cli) -> Result<Slideshow> {
+    Ok(Slideshow::new(&cli.share_link)?
+        .with_password(&cli.password)
+        .with_ordering(cli.order)
+        .with_random_start(cli.random_start)
+        .with_source_size(cli.source_size))
+}
+
+/// Return a photo or error screen from Result, unless it's a login error, in which case return
+/// early from the slideshow loop.
+fn load_photo_or_error_screen(
+    next_photo_result: Result<DynamicImage>,
+    screen_size: (u32, u32),
+    rotation: Rotation,
+) -> Result<DynamicImage> {
+    match next_photo_result {
+        login_error @ Err(SynoPhotoFrameError::Login(_)) => login_error,
         Err(SynoPhotoFrameError::Other(error)) => {
             log::error!("{error}");
-            asset::error_image(sdl.size())?
+            Ok(asset::error_screen(screen_size, rotation)?)
         }
-        login_error => return login_error.map(|_| ()),
-    };
-    sdl.update_texture(photo_or_error.as_bytes(), TextureIndex::Next)?;
-    Ok(())
+        photo @ Ok(_) => photo,
+    }
 }

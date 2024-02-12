@@ -37,7 +37,7 @@ pub(crate) fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> impl Cookie
 
 pub(crate) fn new_success_response() -> MockResponse {
     let mut response = MockResponse::new();
-    response.expect_status().returning(|| StatusCode::OK);
+    response.expect_status().return_const(StatusCode::OK);
     response
 }
 

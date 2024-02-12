@@ -8,21 +8,64 @@ use image::{
     GenericImageView,
 };
 
-use crate::error::ErrorToString;
+use crate::{cli::Rotation, error::ErrorToString};
 
 pub(crate) trait Framed {
-    fn fit_to_screen_and_add_background(&self, screen_dimensions: (u32, u32)) -> DynamicImage;
+    /// Resizes an image while preserving the aspect ratio, and centers it on screen. Returns a new
+    /// image that exactly matches the screen size
+    fn fit_to_screen(&self, screen_size: (u32, u32), rotation: Rotation) -> Self;
+
+    /// Resizes an image while preserving the aspect ratio, and centers it on screen, filling any
+    /// empty space with blurred background
+    fn fit_to_screen_and_add_background(&self, screen_size: (u32, u32), rotation: Rotation)
+        -> Self;
+
+    /// Adds update icon to an image
+    fn overlay_update_icon(&mut self, update_icon: &Self, rotation: Rotation);
+
+    fn resize(&self, new_width: u32, new_height: u32) -> Self;
+
+    fn rotate(&self, degrees: Rotation) -> Self;
 }
 
 impl Framed for DynamicImage {
-    /// Prepares a photo for display by resizing and centering the original image, and filling any empty space with
-    /// blurred background.
-    fn fit_to_screen_and_add_background(&self, screen_dimensions: (u32, u32)) -> DynamicImage {
+    fn fit_to_screen(&self, screen_size: (u32, u32), rotation: Rotation) -> Self {
+        let rotated = self.rotate(rotation);
+        let resized = resize_to_fit_screen(&rotated, screen_size);
+        center_on_screen(&resized, screen_size)
+    }
+
+    fn fit_to_screen_and_add_background(&self, screen_size: (u32, u32), rotate: Rotation) -> Self {
         internal_fit_to_screen_and_add_background(
             self,
-            screen_dimensions,
+            screen_size,
+            rotate,
             brighten_and_blur_background,
         )
+    }
+
+    fn overlay_update_icon(&mut self, update_icon: &Self, rotation: Rotation) {
+        let (width, height) = (self.width(), self.height());
+        let (x_offset, y_offset) = match rotation {
+            Rotation::D0 => (0, 0),
+            Rotation::D90 => (width - update_icon.height(), 0),
+            Rotation::D180 => (width - update_icon.width(), height - update_icon.height()),
+            Rotation::D270 => (0, height - update_icon.width()),
+        };
+        imageops::overlay(self, update_icon, x_offset as i64, y_offset as i64);
+    }
+
+    fn resize(&self, new_width: u32, new_height: u32) -> Self {
+        self.resize(new_width, new_height, FilterType::Lanczos3)
+    }
+
+    fn rotate(&self, degrees: Rotation) -> Self {
+        match degrees {
+            Rotation::D0 => self.to_owned(),
+            Rotation::D90 => self.rotate90(),
+            Rotation::D180 => self.rotate180(),
+            Rotation::D270 => self.rotate270(),
+        }
     }
 }
 
@@ -33,37 +76,37 @@ pub(crate) fn load_from_memory(buffer: &[u8]) -> Result<DynamicImage, String> {
 /// Testable version of [Framed::fit_to_screen_and_add_background]
 fn internal_fit_to_screen_and_add_background(
     original: &DynamicImage,
-    (xres, yres): (u32, u32),
+    screen_size: (u32, u32),
+    rotate: Rotation,
     brighten_and_blur: fn(&DynamicImage) -> DynamicImage,
 ) -> DynamicImage {
-    let original_dimensions = Dimensions::from(original.dimensions());
-    let screen_dimensions = Dimensions::from((xres, yres));
-    let foreground_dimensions = original_dimensions.resize(screen_dimensions);
-
-    if foreground_dimensions.is_exact_fit_to(screen_dimensions) {
-        /* Image fits perfectly, background not needed. Note that this may still stretch the image
-         * by one pixel horizontally or vertically to make a perfect fit when resized dimensions
-         * are off by a fraction. This however is visually unnoticeable, while necessary for the bytes
-         * array to match length of the texture buffer and avoid a panic when copying data to it. */
-        return original.resize_exact(xres, yres, FilterType::Lanczos3);
+    let rotated = original.rotate(rotate);
+    if rotated.dimensions() == screen_size {
+        return rotated;
     }
 
     let (bg_thread1, bg_thread2) =
-        background_fill_threads(original, (xres, yres), brighten_and_blur);
-    let foreground = original.resize(xres, yres, FilterType::Lanczos3);
+        background_fill_threads(&rotated, screen_size, brighten_and_blur);
+    let foreground = resize_to_fit_screen(&rotated, screen_size);
+    if foreground.dimensions() == screen_size {
+        return foreground;
+    }
 
-    let mut final_image = DynamicImage::new_rgb8(xres, yres);
+    let (x_res, y_res) = screen_size;
+    let mut final_image = DynamicImage::new_rgb8(x_res, y_res);
+
     let bg_fill_1 = bg_thread1.join().unwrap();
     imageops::overlay(&mut final_image, &bg_fill_1, 0, 0);
+
     let bg_fill_2 = bg_thread2.join().unwrap();
     imageops::overlay(
         &mut final_image,
         &bg_fill_2,
-        (xres - bg_fill_2.width()) as i64,
-        (yres - bg_fill_2.height()) as i64,
+        (x_res - bg_fill_2.width()) as i64,
+        (y_res - bg_fill_2.height()) as i64,
     );
 
-    let (w_diff, h_diff) = screen_dimensions.diff(foreground_dimensions);
+    let (w_diff, h_diff) = Dimensions::from(screen_size).diff(foreground.dimensions().into());
     imageops::overlay(
         &mut final_image,
         &foreground,
@@ -74,13 +117,46 @@ fn internal_fit_to_screen_and_add_background(
     final_image
 }
 
+fn resize_to_fit_screen(original: &DynamicImage, (x_res, y_res): (u32, u32)) -> DynamicImage {
+    let original_dimensions = Dimensions::from(original.dimensions());
+    let screen_dimensions = Dimensions::from((x_res, y_res));
+    let foreground_dimensions = original_dimensions.resize(screen_dimensions);
+
+    if foreground_dimensions.is_exact_fit_to(screen_dimensions) {
+        /* Image fits perfectly, background not needed. Note that this may still stretch the image
+         * by one pixel horizontally or vertically to make a perfect fit when resized dimensions
+         * are off by a fraction. */
+        return original.resize_exact(x_res, y_res, FilterType::Lanczos3);
+    }
+
+    Framed::resize(original, x_res, y_res)
+}
+
+fn center_on_screen(original: &DynamicImage, (x_res, y_res): (u32, u32)) -> DynamicImage {
+    let original_dimensions = Dimensions::from(original.dimensions());
+    let screen_dimensions = Dimensions::from((x_res, y_res));
+    let foreground_dimensions = original_dimensions.resize(screen_dimensions);
+
+    let mut final_image = DynamicImage::new_rgb8(x_res, y_res);
+
+    let (w_diff, h_diff) = screen_dimensions.diff(foreground_dimensions);
+    imageops::overlay(
+        &mut final_image,
+        original,
+        (w_diff / 2.0).round() as i64,
+        (h_diff / 2.0).round() as i64,
+    );
+
+    final_image
+}
+
 fn background_fill_threads(
     image: &DynamicImage,
-    (xres, yres): (u32, u32),
+    (x_res, y_res): (u32, u32),
     brighten_and_blur: fn(&DynamicImage) -> DynamicImage,
 ) -> (JoinHandle<DynamicImage>, JoinHandle<DynamicImage>) {
     let original_dimensions = Dimensions::from(image.dimensions());
-    let screen_dimensions = Dimensions::from((xres, yres));
+    let screen_dimensions = Dimensions::from((x_res, y_res));
     let (
         Coords {
             x: x1,
@@ -110,19 +186,19 @@ fn background_fill_threads(
         ),
     );
     let bg_thread1 = thread::spawn(move || {
-        let bg = bg_crop1.resize(xres, yres, FilterType::Nearest);
+        let bg = bg_crop1.resize(x_res, y_res, FilterType::Nearest);
         brighten_and_blur(&bg)
     });
     let bg_thread2 = thread::spawn(move || {
-        let bg = bg_crop2.resize(xres, yres, FilterType::Nearest);
+        let bg = bg_crop2.resize(x_res, y_res, FilterType::Nearest);
         brighten_and_blur(&bg)
     });
     (bg_thread1, bg_thread2)
 }
 
 fn brighten_and_blur_background(background: &DynamicImage) -> DynamicImage {
-    const BRIGHTNESS_OFFSET: i32 = -30;
-    const BLUR_SIGMA: f32 = 50.0;
+    const BRIGHTNESS_OFFSET: i32 = -20;
+    const BLUR_SIGMA: f32 = 45.0;
     background.brighten(BRIGHTNESS_OFFSET).blur(BLUR_SIGMA)
 }
 
@@ -146,22 +222,24 @@ impl Dimensions {
         Self { w, h }
     }
 
-    fn diff(&self, Dimensions { w, h }: Dimensions) -> (f64, f64) {
+    fn diff(self, Dimensions { w, h }: Dimensions) -> (f64, f64) {
         (f64::abs(self.w - w), f64::abs(self.h - h))
     }
 
-    fn is_exact_fit_to(&self, target: Dimensions) -> bool {
+    fn is_exact_fit_to(self, target: Dimensions) -> bool {
         let (w_diff, h_diff) = self.diff(target);
         w_diff as u32 == 0 && h_diff as u32 == 0
     }
 
-    /// Resize dimensions preserving aspect ratio. The dimensions are scaled to the maximum possible size that fits
-    /// within the bounds specified by `new_dimensions`.
-    fn resize(&self, new_dimensions: Dimensions) -> Dimensions {
-        let Dimensions {
+    /// Resize dimensions preserving aspect ratio. The dimensions are scaled to the maximum possible
+    /// size that fits within the bounds specified by `new_width` and `new_height`.
+    fn resize(
+        self,
+        Dimensions {
             w: new_width,
             h: new_height,
-        } = new_dimensions;
+        }: Dimensions,
+    ) -> Dimensions {
         let wratio = new_width / self.w;
         let hratio = new_height / self.h;
 
@@ -174,9 +252,9 @@ impl Dimensions {
     }
 
     /// Calculates coordinates of parts of the foreground that will form the background fills.
-    fn background_crops(&self, screen: Dimensions) -> (Coords, Coords) {
-        let screen_to_image_projection = screen.resize(*self);
-        let (w_diff, h_diff) = screen_to_image_projection.diff(*self);
+    fn background_crops(self, screen_size: Dimensions) -> (Coords, Coords) {
+        let screen_to_image_projection = screen_size.resize(self);
+        let (w_diff, h_diff) = screen_to_image_projection.diff(self);
         let (bg_x, bg_y) = (w_diff / 2.0, h_diff / 2.0);
 
         let image_to_projected_screen = self.resize(screen_to_image_projection);
@@ -235,6 +313,7 @@ struct Coords {
 
 #[cfg(test)]
 mod tests {
+    use crate::cli::Rotation;
     use image::{GenericImage, GenericImageView, Rgba};
 
     use super::*;
@@ -252,6 +331,7 @@ mod tests {
         let result = internal_fit_to_screen_and_add_background(
             &original,
             screen,
+            Rotation::D0,
             panicking_brighten_and_blur_stub,
         );
 
@@ -268,6 +348,7 @@ mod tests {
         let result = internal_fit_to_screen_and_add_background(
             &original,
             screen,
+            Rotation::D0,
             panicking_brighten_and_blur_stub,
         );
 
@@ -288,7 +369,7 @@ mod tests {
                 original.put_pixel(x, y, BLUE);
             }
         }
-        let (xres, yres) = (120, 80); /* screen resolution */
+        let (x_res, y_res) = (120, 80); /* screen resolution */
         fn brighten_and_blur_stub(img: &DynamicImage) -> DynamicImage {
             /* This will help asserting that the function got applied to the background */
             img.brighten(-55)
@@ -296,19 +377,20 @@ mod tests {
 
         let result = internal_fit_to_screen_and_add_background(
             &original,
-            (xres, yres),
+            (x_res, y_res),
+            Rotation::D0,
             brighten_and_blur_stub,
         );
 
-        assert_eq!(result.pixels().count(), (xres * yres) as usize);
+        assert_eq!(result.pixels().count(), (x_res * y_res) as usize);
         let expected_bg_w = 10;
-        for y in 0..yres {
+        for y in 0..y_res {
             /* Check left background fill is green, brightened by -55 */
             for x in 0..expected_bg_w {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 200, 0, 255]));
             }
             /* Check right background fill is blue, brightened by -55 */
-            for x in xres - expected_bg_w..xres {
+            for x in x_res - expected_bg_w..x_res {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 0, 200, 255]))
             }
         }
@@ -327,7 +409,7 @@ mod tests {
                 original.put_pixel(x, y, BLUE);
             }
         }
-        let (xres, yres) = (60, 40); /* screen resolution */
+        let (x_res, y_res) = (60, 40); /* screen resolution */
         fn brighten_and_blur_stub(img: &DynamicImage) -> DynamicImage {
             /* This will help asserting that the function got applied to the background */
             img.brighten(-55)
@@ -335,19 +417,20 @@ mod tests {
 
         let result = internal_fit_to_screen_and_add_background(
             &original,
-            (xres, yres),
+            (x_res, y_res),
+            Rotation::D0,
             brighten_and_blur_stub,
         );
 
-        assert_eq!(result.pixels().count(), (xres * yres) as usize);
+        assert_eq!(result.pixels().count(), (x_res * y_res) as usize);
         let expected_bg_w = 5;
-        for y in 0..yres {
+        for y in 0..y_res {
             /* Check left background fill is green, brightened by -55 */
             for x in 0..expected_bg_w {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 200, 0, 255]));
             }
             /* Check right background fill is blue, brightened by -55 */
-            for x in xres - expected_bg_w..xres {
+            for x in x_res - expected_bg_w..x_res {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 0, 200, 255]))
             }
         }
@@ -366,7 +449,7 @@ mod tests {
                 original.put_pixel(x, y, BLUE);
             }
         }
-        let (xres, yres) = (120, 80); /* screen resolution */
+        let (x_res, y_res) = (120, 80); /* screen resolution */
         fn brighten_and_blur_stub(img: &DynamicImage) -> DynamicImage {
             /* This will help asserting that the function got applied to the background */
             img.brighten(-55)
@@ -374,19 +457,20 @@ mod tests {
 
         let result = internal_fit_to_screen_and_add_background(
             &original,
-            (xres, yres),
+            (x_res, y_res),
+            Rotation::D0,
             brighten_and_blur_stub,
         );
 
-        assert_eq!(result.pixels().count(), (xres * yres) as usize);
+        assert_eq!(result.pixels().count(), (x_res * y_res) as usize);
         let expected_bg_h = 10;
-        for x in 0..xres {
+        for x in 0..x_res {
             /* Check top background fill is green, brightened by -55 */
             for y in 0..expected_bg_h {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 200, 0, 255]));
             }
             /* Check bottom background fill is blue, brightened by -55 */
-            for y in yres - expected_bg_h..yres {
+            for y in y_res - expected_bg_h..y_res {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 0, 200, 255]))
             }
         }
@@ -405,7 +489,7 @@ mod tests {
                 original.put_pixel(x, y, BLUE);
             }
         }
-        let (xres, yres) = (60, 40); /* screen resolution */
+        let (x_res, y_res) = (60, 40); /* screen resolution */
         fn brighten_and_blur_stub(img: &DynamicImage) -> DynamicImage {
             /* This will help asserting that the function got applied to the background */
             img.brighten(-55)
@@ -413,19 +497,20 @@ mod tests {
 
         let result = internal_fit_to_screen_and_add_background(
             &original,
-            (xres, yres),
+            (x_res, y_res),
+            Rotation::D0,
             brighten_and_blur_stub,
         );
 
-        assert_eq!(result.pixels().count(), (xres * yres) as usize);
+        assert_eq!(result.pixels().count(), (x_res * y_res) as usize);
         let expected_bg_h = 5;
-        for x in 0..xres {
+        for x in 0..x_res {
             /* Check top background fill is green, brightened by -55 */
             for y in 0..expected_bg_h {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 200, 0, 255]));
             }
             /* Check bottom background fill is blue, brightened by -55 */
-            for y in yres - expected_bg_h..yres {
+            for y in y_res - expected_bg_h..y_res {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 0, 200, 255]))
             }
         }

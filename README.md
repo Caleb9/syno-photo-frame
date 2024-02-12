@@ -129,7 +129,6 @@ platform where Rust and [SDL](https://www.libsdl.org/) are available.
    apt upgrade -y && \
    apt install -y \
        libsdl2-dev \
-       libsdl2-ttf-dev \
        libssl-dev'
    ```
 

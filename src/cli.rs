@@ -1,15 +1,15 @@
 //! CLI options
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 pub use clap::Parser;
-use clap::ValueEnum;
+use clap::{builder::TypedValueParser as _, ValueEnum};
 
-use crate::http::Url;
+use crate::{error::ErrorToString, http::Url};
 
 /// Synology Photos album fullscreen slideshow
 ///
-/// Project website: https://github.com/caleb9/syno-photo-frame
+/// Project website: <https://github.com/caleb9/syno-photo-frame>
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 pub struct Cli {
@@ -24,10 +24,15 @@ pub struct Cli {
 
     /// Photo change interval in seconds
     ///
-    /// Must be greater or equal to 5. Note that it is only guaranteed that the display time will not be shorter than
-    /// specified value, but it may exceed this value if next photo fetching and processing takes longer time
-    #[arg(short = 'i', long = "interval", default_value_t = 30, value_parser = clap::value_parser!(u16).range(5..))]
-    pub interval_seconds: u16,
+    /// Must be greater or equal to 5. Note that it is only guaranteed that the display time will
+    /// not be shorter than specified value, but it may exceed this value if next photo fetching and
+    /// processing takes longer time
+    #[arg(
+        short = 'i',
+        long = "interval",
+        default_value = "30",
+        value_parser = try_parse_duration)]
+    pub photo_change_interval: Duration,
 
     /// Slideshow ordering
     #[arg(short = 'o', long, value_enum, default_value_t = Order::ByDate)]
@@ -41,19 +46,32 @@ pub struct Cli {
     #[arg(short = 't', long, value_enum, default_value_t = Transition::Crossfade)]
     pub transition: Transition,
 
+    /// Rotate display to match screen orientation
+    #[arg(
+        long = "rotate",
+        default_value = "0",
+        value_parser =
+            clap::builder::PossibleValuesParser::new(ROTATIONS).map(Rotation::from)
+    )]
+    pub rotation: Rotation,
+
     /// Path to a JPEG file to display during startup, replacing the default splash-screen
     #[arg(long)]
     pub splash: Option<PathBuf>,
 
     /// HTTP request timeout in seconds
     ///
-    /// Must be greater or equal to 5. When Synology Photos does not respond within the timeout, an error is
-    /// displayed. Try to increase the value for slow connections
-    #[arg(long = "timeout", default_value_t = 30, value_parser = clap::value_parser!(u16).range(5..))]
+    /// Must be greater or equal to 5. When Synology Photos does not respond within the timeout, an
+    /// error is displayed. Try to increase the value for slow connections
+    #[arg(
+        long = "timeout",
+        default_value_t = 30,
+        value_parser = clap::value_parser!(u16).range(5..))]
     pub timeout_seconds: u16,
 
-    /// Size of the photo as fetched from the Synology Photos. Can reduce network and CPU utilization at the
-    /// cost of image quality
+    /// Requested size of the photo as fetched from the Synology Photos. Can reduce network and CPU
+    /// utilization at the cost of image quality. Note that photos are still scaled to full-screen
+    /// size
     #[arg(long, value_enum, default_value_t = SourceSize::L)]
     pub source_size: SourceSize,
 
@@ -62,14 +80,23 @@ pub struct Cli {
     pub disable_update_check: bool,
 }
 
+fn try_parse_duration(arg: &str) -> Result<Duration, String> {
+    let seconds = arg.parse().map_err_to_string()?;
+    if seconds < 5 {
+        Err("must not be less than 5".to_string())
+    } else {
+        Ok(Duration::from_secs(seconds))
+    }
+}
+
 /// Slideshow ordering
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum Order {
-    /// ordered by photo shooting date
+    /// by photo shooting date
     ByDate,
-    /// ordered by photo file name
+    /// by photo file name
     ByName,
-    /// in random order
+    /// randomly
     Random,
 }
 
@@ -84,7 +111,34 @@ pub enum Transition {
     None,
 }
 
-/// Size of source photo to fetch
+const ROTATIONS: [&str; 4] = ["0", "90", "180", "270"];
+
+/// Screen rotation in degrees
+#[derive(Debug, Copy, Clone)]
+pub enum Rotation {
+    /// 0°
+    D0,
+    /// 90°
+    D90,
+    /// 180°
+    D180,
+    /// 270°
+    D270,
+}
+
+impl From<String> for Rotation {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "0" => Rotation::D0,
+            "90" => Rotation::D90,
+            "180" => Rotation::D180,
+            "270" => Rotation::D270,
+            _ => panic!(),
+        }
+    }
+}
+
+/// Requested size of source photo to fetch from Synology Photos
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum SourceSize {
     /// small (360x240)

@@ -14,8 +14,7 @@
 #     docker build . --builder cross --platform linux/arm64 --target=dpkg --output type=local,dest=.
 #
 # Build just the binary (note that to execute it afterwards,
-# libsdl2-2.0.0 and libsdl2-ttf-2.0.0 dependency packages need to be
-# installed):
+# libsdl2-2.0.0 dependency package need to be installed):
 #
 #     docker build . --builder cross --platform linux/arm64 --target=bin --output type=local,dest=.
 #
@@ -37,13 +36,14 @@
 FROM rust:bookworm as build
 
 RUN DEBIAN_FRONTEND=noninteractive apt update && \
-    apt install -y libsdl2-dev libsdl2-ttf-dev libssl-dev lintian && \
+    apt install -y libsdl2-dev libssl-dev lintian && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
 # Cache dependencies build
 RUN cargo init --name syno-photo-frame --vcs none .
 COPY Cargo.toml Cargo.lock .
+RUN cargo fetch
 RUN cargo build --release
 # Build the binary and Debian package
 COPY . .

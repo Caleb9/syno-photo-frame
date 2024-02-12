@@ -7,9 +7,12 @@ pub(crate) use reqwest::{StatusCode, Url};
 #[cfg(test)]
 pub(crate) use reqwest::cookie::Jar;
 
+use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
 use serde::de::DeserializeOwned;
 
 use crate::error::ErrorToString;
+
+type Result<T> = core::result::Result<T, String>;
 
 /// Isolates [reqwest::blocking::Client] for testing
 pub trait Client {
@@ -20,9 +23,9 @@ pub trait Client {
         url: &str,
         form: &[(&str, &str)],
         header: Option<(&str, &str)>,
-    ) -> Result<Self::Response, String>;
+    ) -> Result<Self::Response>;
 
-    fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<Self::Response, String>;
+    fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<Self::Response>;
 }
 
 /// Isolates [reqwest::blocking::Response] for testing
@@ -31,23 +34,11 @@ pub trait Response {
     fn status(&self) -> StatusCode;
 
     /* 'static is needed by automock */
-    fn json<T: DeserializeOwned + 'static>(self) -> Result<T, String>;
+    fn json<T: DeserializeOwned + 'static>(self) -> Result<T>;
 
-    fn bytes(self) -> Result<Bytes, String>;
+    fn bytes(self) -> Result<Bytes>;
 
-    fn text(self) -> Result<String, String>;
-}
-
-/// Wrapper for [reqwest::blocking::Client]
-#[derive(Clone, Debug)]
-pub struct ReqwestClient {
-    client: reqwest::blocking::Client,
-}
-
-impl From<reqwest::blocking::Client> for ReqwestClient {
-    fn from(value: reqwest::blocking::Client) -> Self {
-        ReqwestClient { client: value }
-    }
+    fn text(self) -> Result<String>;
 }
 
 impl Client for ReqwestClient {
@@ -58,46 +49,36 @@ impl Client for ReqwestClient {
         url: &str,
         form: &[(&str, &str)],
         header: Option<(&str, &str)>,
-    ) -> Result<ReqwestResponse, String> {
-        let mut request_builder = self.client.post(url).form(form);
+    ) -> Result<ReqwestResponse> {
+        let mut request_builder = ReqwestClient::post(self, url).form(form);
         if let Some((key, value)) = header {
             request_builder = request_builder.header(key, value);
         }
-        let response = request_builder.send().map_err_to_string()?;
-        Ok(ReqwestResponse { response })
+        request_builder.send().map_err_to_string()
     }
 
-    fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<ReqwestResponse, String> {
-        let response = self
-            .client
-            .get(url)
+    fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<ReqwestResponse> {
+        ReqwestClient::get(self, url)
             .query(query)
             .send()
-            .map_err_to_string()?;
-        Ok(ReqwestResponse { response })
+            .map_err_to_string()
     }
-}
-
-/// Wrapper for [reqwest::blocking::Response]
-#[derive(Debug)]
-pub struct ReqwestResponse {
-    response: reqwest::blocking::Response,
 }
 
 impl Response for ReqwestResponse {
     fn status(&self) -> StatusCode {
-        self.response.status()
+        ReqwestResponse::status(self)
     }
 
-    fn json<T: DeserializeOwned>(self) -> Result<T, String> {
-        self.response.json().map_err_to_string()
+    fn json<T: DeserializeOwned>(self) -> Result<T> {
+        ReqwestResponse::json(self).map_err_to_string()
     }
 
-    fn bytes(self) -> Result<Bytes, String> {
-        self.response.bytes().map_err_to_string()
+    fn bytes(self) -> Result<Bytes> {
+        ReqwestResponse::bytes(self).map_err_to_string()
     }
 
-    fn text(self) -> Result<String, String> {
-        self.response.text().map_err_to_string()
+    fn text(self) -> Result<String> {
+        ReqwestResponse::text(self).map_err_to_string()
     }
 }

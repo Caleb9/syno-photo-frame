@@ -8,7 +8,7 @@ use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
     error::{ErrorToString, SynoPhotoFrameError},
-    http::{ClientBuilder, ReqwestClient},
+    http::ClientBuilder,
     logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
     Random,
@@ -62,10 +62,7 @@ fn init_and_run() -> Result<(), SynoPhotoFrameError> {
         sdl::create_texture(&texture_creator, display_size)?,
     ];
     let events = video.sdl().event_pump()?;
-    let ttf = sdl::init_ttf()?;
-    let update_notification_texture =
-        sdl::create_update_notification_texture(&ttf, &texture_creator)?;
-    let mut sdl = SdlWrapper::new(canvas, textures, update_notification_texture, events);
+    let mut sdl = SdlWrapper::new(canvas, textures, events);
 
     /* Random */
     let random: Random = (
@@ -79,7 +76,7 @@ fn init_and_run() -> Result<(), SynoPhotoFrameError> {
     syno_photo_frame::run(
         &cli,
         (
-            &LoggingClientDecorator::new(ReqwestClient::from(client)).with_level(log::Level::Trace),
+            &LoggingClientDecorator::new(client).with_level(log::Level::Trace),
             cookie_store.as_ref(),
         ),
         &mut sdl,

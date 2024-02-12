@@ -28,7 +28,7 @@ impl Deref for SharingId {
 }
 
 /// Returns Synology Photos API URL and sharing id extracted from album share link
-pub(crate) fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
+pub(crate) fn parse_share_link(share_link: &Url) -> core::result::Result<(Url, SharingId), String> {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"^(https?://.+)/([^/]+)/?$").unwrap());
     let Some(captures) = re.captures(share_link.as_str()) else {
@@ -38,12 +38,14 @@ pub(crate) fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), Str
     Ok((api_url, SharingId(captures[2].to_owned())))
 }
 
+type Result<T> = core::result::Result<T, PhotosApiError>;
+
 pub(crate) fn login(
     client: &impl Client,
     api_url: &Url,
     sharing_id: &SharingId,
     password: &Option<String>,
-) -> Result<(), PhotosApiError> {
+) -> Result<()> {
     let params = [
         ("api", "SYNO.Core.Sharing.Login"),
         ("method", "login"),
@@ -66,7 +68,7 @@ pub(crate) fn get_album_contents_count(
     client: &impl Client,
     api_url: &Url,
     sharing_id: &SharingId,
-) -> Result<Vec<dto::Album>, PhotosApiError> {
+) -> Result<Vec<dto::Album>> {
     let params = [
         ("api", "SYNO.Foto.Browse.Album"),
         ("method", "get"),
@@ -97,7 +99,7 @@ pub(crate) struct Limit(u32);
 impl TryFrom<u32> for Limit {
     type Error = &'static str;
 
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
+    fn try_from(value: u32) -> core::result::Result<Self, Self::Error> {
         if value > 5000 {
             Err("Limit only accepts values up to 5000")
         } else {
@@ -141,7 +143,7 @@ pub(crate) fn get_album_contents(
     offset: u32,
     limit: Limit,
     sort_by: SortBy,
-) -> Result<Vec<dto::Photo>, PhotosApiError> {
+) -> Result<Vec<dto::Photo>> {
     let params = [
         ("api", "SYNO.Foto.Browse.Item"),
         ("method", "list"),
@@ -176,7 +178,7 @@ pub(crate) fn get_photo(
     api_url: &Url,
     sharing_id: &SharingId,
     (photo_id, photo_cache_key, source_size): (i32, &str, SourceSize),
-) -> Result<Bytes, PhotosApiError> {
+) -> Result<Bytes> {
     let size = match source_size {
         SourceSize::S => "sm",
         SourceSize::M => "m",
@@ -194,15 +196,17 @@ pub(crate) fn get_photo(
     ];
     let response = client.get(api_url.as_str(), &params)?;
     read_response(response, |response| {
+        // TODO deal with a situation when the API returns a response with successful status code
+        // but the body contains JSON with an error instead of an image
         let bytes = response.bytes()?;
         Ok(bytes)
     })
 }
 
-fn read_response<R, S, T>(response: R, on_success: S) -> Result<T, PhotosApiError>
+fn read_response<R, S, T>(response: R, on_success: S) -> Result<T>
 where
     R: Response,
-    S: FnOnce(R) -> Result<T, PhotosApiError>,
+    S: FnOnce(R) -> Result<T>,
 {
     let status = response.status();
     if status.is_success() {
