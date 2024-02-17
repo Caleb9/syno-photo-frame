@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         *publicly shared album*. If the album's password link protection is \
                         enabled, use the --password option with a valid password.",
                 )?,
-                other => Err(other)?,
+                SynoPhotoFrameError::Other(other) => Err(other)?,
             }
         }
         _ => Ok(()),
