@@ -5,7 +5,7 @@
 use std::{
     ops::Range,
     sync::mpsc::{self, Receiver, SyncSender},
-    thread::{self, Scope},
+    thread::{self, Scope, ScopedJoinHandle},
     time::{Duration, Instant},
 };
 
@@ -145,26 +145,24 @@ fn photo_fetcher_thread<'a, C: Client + Clone + Send>(
     random: Random,
     thread_scope: &'a Scope<'a, '_>,
     photo_tx: SyncSender<Result<DynamicImage>>,
-) -> Result<()> {
+) -> Result<ScopedJoinHandle<'a, Result<()>>> {
     let mut slideshow = new_slideshow(cli)?;
     let client = client.clone();
-    thread_scope.spawn(move || loop {
+    Ok(thread_scope.spawn(move || loop {
         let photo_result = slideshow
             .get_next_photo((&client, cookie_store), random)
             .and_then(|bytes| img::load_from_memory(&bytes).map_err(SynoPhotoFrameError::Other))
             .map(|image| image.fit_to_screen_and_add_background(screen_size, cli.rotation));
-        /* Blocks until photo is received by the main thread */
-        photo_tx.send(photo_result).unwrap();
-    });
-    Ok(())
-}
-
-fn new_slideshow(cli: &Cli) -> Result<Slideshow> {
-    Ok(Slideshow::new(&cli.share_link)?
-        .with_password(&cli.password)
-        .with_ordering(cli.order)
-        .with_random_start(cli.random_start)
-        .with_source_size(cli.source_size))
+        match photo_result {
+            login_error @ Err(SynoPhotoFrameError::Login(_)) => {
+                /* Send the login error and break the loop to avoid deadlock and terminate the app */
+                photo_tx.send(login_error)?;
+                break Ok(());
+            }
+            /* Blocks until photo is received by the main thread */
+            ok_or_not_login_error => photo_tx.send(ok_or_not_login_error)?,
+        }
+    }))
 }
 
 /// Return a photo or error screen from Result, unless it's a login error, in which case return
@@ -175,11 +173,118 @@ fn load_photo_or_error_screen(
     rotation: Rotation,
 ) -> Result<DynamicImage> {
     match next_photo_result {
-        login_error @ Err(SynoPhotoFrameError::Login(_)) => login_error,
+        login_error @ Err(SynoPhotoFrameError::Login(_)) => {
+            /* Login error terminates the main thread loop */
+            login_error
+        }
         Err(SynoPhotoFrameError::Other(error)) => {
+            /* Any other error gets logged and an error screen is displayed. */
             log::error!("{error}");
             Ok(asset::error_screen(screen_size, rotation)?)
         }
         photo @ Ok(_) => photo,
+    }
+}
+
+fn new_slideshow(cli: &Cli) -> Result<Slideshow> {
+    Ok(Slideshow::new(&cli.share_link)?
+        .with_password(&cli.password)
+        .with_ordering(cli.order)
+        .with_random_start(cli.random_start)
+        .with_source_size(cli.source_size))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        api_photos::dto,
+        cli::Parser,
+        http::{Jar, MockResponse, StatusCode},
+        sdl::MockSdl,
+        test_helpers::MockClient,
+    };
+
+    use super::*;
+
+    #[test]
+    fn when_login_fails_with_api_error_then_loop_terminates() {
+        const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
+        const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
+
+        let mut client_stub = MockClient::new();
+        client_stub.expect_clone().returning(|| {
+            let mut error_response = MockResponse::new();
+            error_response.expect_status().return_const(StatusCode::OK);
+            error_response
+                .expect_json::<dto::ApiResponse<dto::Login>>()
+                .return_once(|| {
+                    Ok(dto::ApiResponse {
+                        success: false,
+                        error: Some(dto::ApiError { code: 42 }),
+                        data: None,
+                    })
+                });
+            let mut client_clone = MockClient::new();
+            client_clone
+                .expect_post()
+                .withf(|url, form, _| {
+                    url == EXPECTED_API_URL && test_helpers::is_login_form(form, "FakeSharingId")
+                })
+                .return_once(|_, _, _| Ok(error_response));
+            client_clone
+        });
+        let cli_command = format!("syno-photo-frame {SHARE_LINK} --disable-update-check");
+
+        let result = run(
+            &Cli::parse_from(cli_command.split(' ')),
+            (&client_stub, &Jar::default()),
+            &mut MockSdl::new().with_default_expectations(),
+            DUMMY_SLEEP_AND_RANDOM,
+            "1.2.3",
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn when_login_fails_with_http_error_then_loop_terminates() {
+        let mut client_stub = MockClient::new();
+        client_stub.expect_clone().returning(|| {
+            let mut error_response = MockResponse::new();
+            error_response
+                .expect_status()
+                .return_const(StatusCode::FORBIDDEN);
+            let mut client_clone = MockClient::new();
+            client_clone
+                .expect_post()
+                .return_once(|_, _, _| Ok(error_response));
+            client_clone
+        });
+        const CLI_COMMAND: &str =
+            "syno-photo-frame http://fake.dsm.addr/aa/sharing/FakeSharingId --disable-update-check";
+
+        let result = run(
+            &Cli::parse_from(CLI_COMMAND.split(' ')),
+            (&client_stub, &Jar::default()),
+            &mut MockSdl::new().with_default_expectations(),
+            DUMMY_SLEEP_AND_RANDOM,
+            "1.2.3",
+        );
+
+        assert!(result.is_err());
+    }
+
+    const DUMMY_SLEEP_AND_RANDOM: (fn(Duration), Random) = (|_| (), (|_| 42, |_| ()));
+
+    impl MockSdl {
+        pub(crate) fn with_default_expectations(mut self) -> Self {
+            self.expect_size().return_const((198, 102));
+            self.expect_update_texture().return_const(Ok(()));
+            self.expect_copy_texture_to_canvas().return_const(Ok(()));
+            self.expect_fill_canvas().return_const(Ok(()));
+            self.expect_present_canvas().return_const(());
+            self.expect_handle_quit_event().return_const(());
+            self
+        }
     }
 }

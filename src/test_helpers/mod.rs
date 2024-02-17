@@ -67,3 +67,13 @@ pub(crate) fn new_photo_dto(id: i32, cache_key: &str) -> dto::Photo {
         },
     }
 }
+
+pub(crate) fn is_login_form(form: &[(&str, &str)], sharing_id: &str) -> bool {
+    form.eq(&[
+        ("api", "SYNO.Core.Sharing.Login"),
+        ("method", "login"),
+        ("version", "1"),
+        ("sharing_id", sharing_id),
+        ("password", ""),
+    ])
+}

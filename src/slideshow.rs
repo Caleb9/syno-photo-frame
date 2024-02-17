@@ -202,7 +202,9 @@ mod tests {
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
-            .withf(|url, form, _| url == EXPECTED_API_URL && is_login_form(form, "FakeSharingId"))
+            .withf(|url, form, _| {
+                url == EXPECTED_API_URL && test_helpers::is_login_form(form, "FakeSharingId")
+            })
             .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
         const PHOTO_COUNT: u32 = 3;
         client_mock
@@ -282,7 +284,7 @@ mod tests {
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_login_form(form, "FakeSharingId"))
+            .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
             .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
         const PHOTO_COUNT: u32 = 142;
         client_mock
@@ -357,7 +359,7 @@ mod tests {
             let mut client_mock = MockClient::new();
             client_mock
                 .expect_post()
-                .withf(|_, form, _| is_login_form(form, "FakeSharingId"))
+                .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
                 .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
             const PHOTO_COUNT: u32 = 142;
             client_mock
@@ -547,7 +549,7 @@ mod tests {
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
-            .withf(|_, form, _| is_login_form(form, "FakeSharingId"))
+            .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
             .return_once(|_, _, _| Ok(test_helpers::new_response_with_json(dto::Login {})));
         const PHOTO_COUNT: u32 = 5;
         client_mock
@@ -682,16 +684,6 @@ mod tests {
         let share_link = Url::parse(share_link).unwrap();
 
         Slideshow::new(&share_link).unwrap()
-    }
-
-    fn is_login_form(form: &[(&str, &str)], sharing_id: &str) -> bool {
-        form.eq(&[
-            ("api", "SYNO.Core.Sharing.Login"),
-            ("method", "login"),
-            ("version", "1"),
-            ("sharing_id", sharing_id),
-            ("password", ""),
-        ])
     }
 
     fn is_get_count_form(form: &[(&str, &str)]) -> bool {

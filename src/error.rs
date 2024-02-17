@@ -3,6 +3,7 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
+    sync::mpsc::{SendError, TrySendError},
 };
 
 use crate::api_photos::PhotosApiError;
@@ -15,9 +16,23 @@ pub enum SynoPhotoFrameError {
     Other(String),
 }
 
+impl Error for SynoPhotoFrameError {}
+
 impl From<String> for SynoPhotoFrameError {
     fn from(value: String) -> Self {
         SynoPhotoFrameError::Other(value)
+    }
+}
+
+impl<T> From<SendError<T>> for SynoPhotoFrameError {
+    fn from(value: SendError<T>) -> Self {
+        SynoPhotoFrameError::Other(value.to_string())
+    }
+}
+
+impl<T> From<TrySendError<T>> for SynoPhotoFrameError {
+    fn from(value: TrySendError<T>) -> Self {
+        SynoPhotoFrameError::Other(value.to_string())
     }
 }
 
@@ -29,8 +44,6 @@ impl Display for SynoPhotoFrameError {
         }
     }
 }
-
-impl Error for SynoPhotoFrameError {}
 
 /// Maps [Result<T,E>] to [Result<T,String>]
 pub trait ErrorToString<T> {

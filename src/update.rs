@@ -1,10 +1,14 @@
-use std::{sync::mpsc::SyncSender, thread::Scope};
+use std::{
+    sync::mpsc::SyncSender,
+    thread::{Scope, ScopedJoinHandle},
+};
 
 use image::DynamicImage;
 
 use crate::{
     api_crates, asset,
     cli::Rotation,
+    error::SynoPhotoFrameError,
     http::Client,
     img::Framed,
     sdl::{Sdl, TextureIndex},
@@ -47,7 +51,7 @@ pub(crate) fn check_for_updates_thread<'a, C: Client + Clone + Send>(
     installed_version: &'a str,
     thread_scope: &'a Scope<'a, '_>,
     update_available_tx: SyncSender<bool>,
-) {
+) -> ScopedJoinHandle<'a, Result<(), SynoPhotoFrameError>> {
     let client = client.clone();
     thread_scope.spawn(move || {
         match api_crates::get_latest_version(&client) {
@@ -57,12 +61,13 @@ pub(crate) fn check_for_updates_thread<'a, C: Client + Clone + Send>(
                         "New version is available ({installed_version} -> {})",
                         remote_crate.vers
                     );
-                    update_available_tx.send(true).unwrap();
+                    update_available_tx.try_send(true)?;
                 }
             }
             Err(error) => {
                 log::error!("Check for updates: {error}");
             }
         };
-    });
+        Ok(())
+    })
 }
