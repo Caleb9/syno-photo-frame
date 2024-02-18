@@ -4,12 +4,12 @@
 Photos](https://www.synology.com/en-global/dsm/feature/photos)
 full-screen slideshow for Raspberry Pi.
 
-![](doc/syno-photo-frame.png)
+<img src="doc/syno-photo-frame.png" width=600 />
 
 Features include speed control, transition effects, and a blurry
 background fill.
 
-![](doc/Slideshow.png "Extra space gets blurry background")
+<img src="doc/Slideshow.png" width=600 alt="Extra space gets blurry background" />
 
 __If you like the project, give it a star ⭐, or consider becoming a__
 [![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/caleb9)
@@ -70,7 +70,7 @@ Assuming the Synology Photos package is installed on DSM:
    password.
 6. Click Save.
 
-![Share Album](doc/ShareLink.png)
+<img src="doc/ShareLink.png" alt="Album Sharing" />
 
 ### Raspberry Pi
 
@@ -255,5 +255,4 @@ file location.
 
 ## Supported By
 
-[![JetBrains Logo (Main)
-logo](https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg)](https://jb.gg/OpenSourceSupport)
+[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg" width=100 />](https://jb.gg/OpenSourceSupport)
