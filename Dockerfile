@@ -42,11 +42,11 @@ RUN DEBIAN_FRONTEND=noninteractive apt update && \
 WORKDIR /workspace
 # Cache dependencies build
 RUN cargo init --name syno-photo-frame --vcs none .
-COPY Cargo.toml Cargo.lock .
+COPY Cargo.toml Cargo.lock ./
 RUN cargo fetch
 RUN cargo build --release
 # Build the binary and Debian package
-COPY . .
+COPY ./ ./
 WORKDIR /workspace/dpkg
 RUN make
 
@@ -54,7 +54,7 @@ RUN make
 # build`, making it possible to extract the artifacts from Docker
 # images to the local file system.
 FROM scratch as dpkg
-COPY --from=build /workspace/dpkg/syno-photo-frame_*.deb .
+COPY --from=build /workspace/dpkg/syno-photo-frame_*.deb ./
 
 FROM scratch as bin
-COPY --from=build /workspace/target/release/syno-photo-frame .
+COPY --from=build /workspace/target/release/syno-photo-frame ./

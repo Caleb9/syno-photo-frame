@@ -1,6 +1,6 @@
 use std::thread::{self, JoinHandle};
 
-pub(crate) use image::{open, DynamicImage};
+pub use image::{open, DynamicImage};
 
 use image::{
     self,
@@ -10,7 +10,7 @@ use image::{
 
 use crate::{cli::Rotation, error::ErrorToString};
 
-pub(crate) trait Framed {
+pub trait Framed {
     /// Resizes an image while preserving the aspect ratio, and centers it on screen. Returns a new
     /// image that exactly matches the screen size
     fn fit_to_screen(&self, screen_size: (u32, u32), rotation: Rotation) -> Self;
@@ -69,7 +69,7 @@ impl Framed for DynamicImage {
     }
 }
 
-pub(crate) fn load_from_memory(buffer: &[u8]) -> Result<DynamicImage, String> {
+pub fn load_from_memory(buffer: &[u8]) -> Result<DynamicImage, String> {
     image::load_from_memory(buffer).map_err_to_string()
 }
 
@@ -240,10 +240,10 @@ impl Dimensions {
             h: new_height,
         }: Dimensions,
     ) -> Dimensions {
-        let wratio = new_width / self.w;
-        let hratio = new_height / self.h;
+        let w_ratio = new_width / self.w;
+        let h_ratio = new_height / self.h;
 
-        let ratio = f64::min(wratio, hratio);
+        let ratio = f64::min(w_ratio, h_ratio);
 
         let nw = f64::max(self.w * ratio, 1.0);
         let nh = f64::max(self.h * ratio, 1.0);

@@ -1,6 +1,6 @@
 use crate::http::{Client, Response};
 
-pub(crate) fn get_latest_version(client: &impl Client) -> Result<dto::Crate, String> {
+pub fn get_latest_version(client: &impl Client) -> Result<dto::Crate, String> {
     let response = client.get("https://index.crates.io/sy/no/syno-photo-frame", &[])?;
     let status = response.status();
     if status.is_success() {
@@ -19,7 +19,7 @@ pub(crate) fn get_latest_version(client: &impl Client) -> Result<dto::Crate, Str
     }
 }
 
-pub(crate) mod dto {
+pub mod dto {
     use serde::Deserialize;
 
     #[derive(Debug, PartialEq, Deserialize)]

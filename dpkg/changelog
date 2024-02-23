@@ -74,7 +74,7 @@ syno-photo-frame (0.4.0) stable; urgency=low
     of stopping the app
   * Support AppTerminating event
   * Remove cross compilation instructions
-  * Add loging
+  * Add logging
   * Add 20s timeout for reqwest client
   * Improve Makefile
 

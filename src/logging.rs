@@ -6,7 +6,7 @@ use log::Level;
 
 use crate::http::{Client, Response};
 
-/// Adds logging to [crate::http::Client]
+/// Adds logging to [Client]
 #[derive(Clone, Debug)]
 pub struct LoggingClientDecorator<C> {
     client: C,

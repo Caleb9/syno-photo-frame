@@ -7,7 +7,7 @@ use crate::{
 };
 
 mock! {
-    pub(crate) Client {}
+    pub Client {}
 
     impl Client for Client {
         type Response = MockResponse;
@@ -18,6 +18,7 @@ mock! {
             form: &[(&'a str, &'a str)],
             header: Option<(&'a str, &'a str)>,
         ) -> Result<MockResponse, String>;
+
         fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<MockResponse, String>;
     }
 
@@ -27,7 +28,7 @@ mock! {
 }
 
 /// When `is_logged_in_to_url` is set to Some value, cookie store will simulate logged in state
-pub(crate) fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> impl CookieStore {
+pub fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> impl CookieStore {
     let cookie_store = Jar::default();
     if let Some(url) = is_logged_in_to_url {
         cookie_store.add_cookie_str("sharing_id=FakeSharingId", &Url::parse(url).unwrap());
@@ -35,16 +36,16 @@ pub(crate) fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> impl Cookie
     cookie_store
 }
 
-pub(crate) fn new_success_response() -> MockResponse {
+pub fn new_ok_response() -> MockResponse {
     let mut response = MockResponse::new();
     response.expect_status().return_const(StatusCode::OK);
     response
 }
 
-pub(crate) fn new_response_with_json<T: DeserializeOwned + Send + 'static>(
+pub fn new_success_response_with_json<T: DeserializeOwned + Send + 'static>(
     data: T,
 ) -> MockResponse {
-    let mut response = new_success_response();
+    let mut response = new_ok_response();
     response
         .expect_json::<dto::ApiResponse<T>>()
         .return_once(|| {
@@ -57,7 +58,7 @@ pub(crate) fn new_response_with_json<T: DeserializeOwned + Send + 'static>(
     response
 }
 
-pub(crate) fn new_photo_dto(id: i32, cache_key: &str) -> dto::Photo {
+pub fn new_photo_dto(id: i32, cache_key: &str) -> dto::Photo {
     dto::Photo {
         id,
         additional: dto::Additional {
@@ -68,12 +69,20 @@ pub(crate) fn new_photo_dto(id: i32, cache_key: &str) -> dto::Photo {
     }
 }
 
-pub(crate) fn is_login_form(form: &[(&str, &str)], sharing_id: &str) -> bool {
+pub fn is_login_form(form: &[(&str, &str)], sharing_id: &str) -> bool {
     form.eq(&[
         ("api", "SYNO.Core.Sharing.Login"),
         ("method", "login"),
         ("version", "1"),
         ("sharing_id", sharing_id),
         ("password", ""),
+    ])
+}
+
+pub fn is_get_count_form(form: &[(&str, &str)]) -> bool {
+    form.eq(&[
+        ("api", "SYNO.Foto.Browse.Album"),
+        ("method", "get"),
+        ("version", "1"),
     ])
 }

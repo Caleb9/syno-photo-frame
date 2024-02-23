@@ -1,4 +1,4 @@
-use std::{error::Error, process, sync::Arc, thread, time::Duration};
+use std::{error::Error, sync::Arc, time::Duration};
 
 use log::LevelFilter;
 use rand::{self, seq::SliceRandom, Rng};
@@ -7,41 +7,37 @@ use simple_logger::SimpleLogger;
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
-    error::{ErrorToString, SynoPhotoFrameError},
+    error::{ErrorToString, FrameError},
     http::ClientBuilder,
     logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
-    Random,
+    FrameResult, Random,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
-    ctrlc::set_handler(|| {
-        log::debug!("ctrlc signal received, exiting");
-        process::exit(0);
-    })?;
-
     SimpleLogger::new()
         .with_level(LevelFilter::Info)
         .env()
         .init()?;
 
     match init_and_run() {
-        Err(error) => {
+        Err(FrameError::Login(error)) => {
             log::error!("{error}");
-            match error {
-                SynoPhotoFrameError::Login(_) => Err(
-                    "Login to Synology Photos failed. Make sure the share link is pointing to a \
-                        *publicly shared album*. If the album's password link protection is \
-                        enabled, use the --password option with a valid password.",
-                )?,
-                SynoPhotoFrameError::Other(other) => Err(other)?,
-            }
+            Err(
+                "Login to Synology Photos failed. Make sure the share link is pointing to a \
+                *publicly shared album*. If the album's password link protection is \
+                enabled, use the --password option with a valid password.",
+            )?
         }
-        _ => Ok(()),
+        Err(FrameError::Other(error)) => {
+            log::error!("{error}");
+            Err(error)?
+        }
+        Ok(()) | Err(FrameError::Quit(_)) => Ok(()),
     }
 }
 
-fn init_and_run() -> Result<(), SynoPhotoFrameError> {
+fn init_and_run() -> FrameResult<()> {
     let cli = Cli::parse();
 
     /* HTTP client */
@@ -80,7 +76,7 @@ fn init_and_run() -> Result<(), SynoPhotoFrameError> {
             cookie_store.as_ref(),
         ),
         &mut sdl,
-        (thread::sleep, random),
+        random,
         installed_version,
     )
 }
