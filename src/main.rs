@@ -1,4 +1,4 @@
-use std::{error::Error, sync::Arc, time::Duration};
+use std::error::Error;
 
 use log::LevelFilter;
 use rand::{self, seq::SliceRandom, Rng};
@@ -7,28 +7,18 @@ use simple_logger::SimpleLogger;
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
-    error::{ErrorToString, FrameError},
-    http::ClientBuilder,
-    logging::LoggingClientDecorator,
+    error::FrameError,
     sdl::{self, SdlWrapper},
     FrameResult, Random,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
     SimpleLogger::new()
-        .with_level(LevelFilter::Info)
+        .with_level(LevelFilter::Debug)
         .env()
         .init()?;
 
     match init_and_run() {
-        Err(FrameError::Login(error)) => {
-            log::error!("{error}");
-            Err(
-                "Login to Synology Photos failed. Make sure the share link is pointing to a \
-                *publicly shared album*. If the album's password link protection is \
-                enabled, use the --password option with a valid password.",
-            )?
-        }
         Err(FrameError::Other(error)) => {
             log::error!("{error}");
             Err(error)?
@@ -39,14 +29,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn init_and_run() -> FrameResult<()> {
     let cli = Cli::parse();
-
-    /* HTTP client */
-    let cookie_store = Arc::new(reqwest::cookie::Jar::default());
-    let client = ClientBuilder::new()
-        .cookie_provider(Arc::clone(&cookie_store))
-        .timeout(Duration::from_secs(cli.timeout_seconds as u64))
-        .build()
-        .map_err_to_string()?;
 
     /* SDL */
     let video = sdl::init_video()?;
@@ -66,17 +48,9 @@ fn init_and_run() -> FrameResult<()> {
         |slice| slice.shuffle(&mut rand::thread_rng()),
     );
 
-    /* This crate version */
-    let installed_version = env!("CARGO_PKG_VERSION");
-
     syno_photo_frame::run(
         &cli,
-        (
-            &LoggingClientDecorator::new(client).with_level(log::Level::Trace),
-            cookie_store.as_ref(),
-        ),
         &mut sdl,
         random,
-        installed_version,
     )
 }

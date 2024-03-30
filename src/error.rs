@@ -5,12 +5,10 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use crate::{api_photos::PhotosApiError, transition::TransitionError, QuitEvent};
+use crate::{transition::TransitionError, QuitEvent};
 
 #[derive(Clone, Debug)]
 pub enum FrameError {
-    /// Error logging in to Synology Photos that results in app termination
-    Login(PhotosApiError),
     /// Any other error that is not login and doesn't result in a panic will be logged and handled
     Other(String),
     /// Quit event signaling the app shutdown
@@ -22,7 +20,6 @@ impl Error for FrameError {}
 impl Display for FrameError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            FrameError::Login(error) => write!(f, "{error}"),
             FrameError::Other(error) => write!(f, "{error}"),
             FrameError::Quit(quit_event) => write!(f, "{quit_event}"),
         }

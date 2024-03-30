@@ -16,9 +16,13 @@ pub struct Cli {
     /// Link to a publicly shared album on Synology Photos
     ///
     /// Note that the album's privacy settings must be set to Public
-    pub share_link: Url,
+    pub ftp_server: Url,
+    
+    /// User for smb access
+    #[arg(short = 'u', long = "user")]
+    pub user: Option<String>,
 
-    /// Link protection password if set in the album sharing settings
+    /// Password for smb access
     #[arg(short = 'p', long = "password")]
     pub password: Option<String>,
 
@@ -76,7 +80,7 @@ pub struct Cli {
     pub source_size: SourceSize,
 
     /// Disable checking for updates during startup
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = true)]
     pub disable_update_check: bool,
 }
 
