@@ -1127,6 +1127,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rppal"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dc171bbe325b04172e18d917c58c2cf1fb5adfd9ffabb1d6b3d62ba4c1c1331"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1337,6 +1346,7 @@ dependencies = [
  "mockall",
  "rand",
  "reqwest",
+ "rppal",
  "sdl2",
  "serde",
  "serde_json",

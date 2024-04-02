@@ -41,3 +41,6 @@ simple_logger = "4.*"
 [dev-dependencies]
 mock_instant = "0.3.*"
 mockall = "0.12.*"
+
+[target.'aarch64-unknown-linux-gnu'.dependencies]
+rppal = "0.17.1"
