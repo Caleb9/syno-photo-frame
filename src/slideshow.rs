@@ -19,6 +19,8 @@ pub enum SortBy {
     FileName,
 }
 
+use lazy_regex::*;
+
 
 /// Holds the slideshow state and queries API to fetch photos.
 #[derive(Debug)]
@@ -72,6 +74,8 @@ impl<'a> Slideshow<'a> {
     }
 
     fn get_photos_count(&self) -> u32 {
+        // Filter for jpegs
+        let pattern = regex!(r#"^.+\.(?i:jpg|jpeg)"#);
         // Create a connection to FTP server
         let ftp_connect = self.ftp_server.host_str().unwrap();
         let mut ftp_stream = FtpStream::connect(format!("{}:21", ftp_connect)).unwrap();
@@ -82,7 +86,8 @@ impl<'a> Slideshow<'a> {
         let _ = ftp_stream.cwd(self.ftp_server.path()).unwrap();
 
         // Fetch list of Photos
-        let photos = ftp_stream.nlst(None).unwrap();
+        let mut photos = ftp_stream.nlst(None).unwrap();
+        photos.retain(| filename | pattern.is_match(filename));
 
         // Terminate the connection to the server.
         let _ = ftp_stream.quit();
@@ -90,6 +95,8 @@ impl<'a> Slideshow<'a> {
     }
 
     pub fn get_photo(&mut self, photo_index: u32) -> Result<Bytes, ()> {
+        // Filter for jpegs
+        let pattern = regex!(r#"^.+\.(?i:jpg|jpeg)"#);
         // Create a connection to an FTP server and authenticate to it.
         let ftp_connect = self.ftp_server.host_str().unwrap();
         let mut ftp_stream = FtpStream::connect(format!("{}:21", ftp_connect)).unwrap();
@@ -100,7 +107,8 @@ impl<'a> Slideshow<'a> {
         let _ = ftp_stream.cwd(self.ftp_server.path()).unwrap();
 
         // Fetch list of Photos
-        let photos = ftp_stream.nlst(None).unwrap();
+        let mut photos = ftp_stream.nlst(None).unwrap();
+        photos.retain(| filename | pattern.is_match(filename));
 
         // Retrieve (GET) a file from the FTP server in the current working directory.
         let remote_file = Bytes::from(ftp_stream.simple_retr(photos.get(photo_index as usize).unwrap()).unwrap().into_inner());
