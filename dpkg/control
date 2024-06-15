@@ -6,5 +6,5 @@ Architecture:
 Maintainer: Piotr Karasinski <7767011+Caleb9@users.noreply.github.com>
 Description: Full-screen slideshow for Synology Photos albums
  .
-Depends: libc6 (>= 2.31), libegl1 (>= 1.3.2), libgl1 (>= 1.3.2), libsdl2-2.0-0 (>= 2.0.14), libssl3 | libssl1.1
+Depends: libc6 (>= 2.31), libegl1 (>= 1.3.2), libgl1 (>= 1.3.2), libsdl2-2.0-0 (>= 2.0.26), libssl3 | libssl1.1
 Homepage: https://github.com/Caleb9/syno-photo-frame

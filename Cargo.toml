@@ -33,10 +33,10 @@ log = "0.4.*"
 rand = "0.8.*"
 regex = "1.*"
 reqwest = { version = "0.12.*", features = ["blocking", "cookies", "json"] }
-sdl2 = "0.36.*"
+sdl2 = "0.37.*"
 serde = { version = "1.*", features = ["derive"] }
 serde_json = "1.*"
-simple_logger = "4.*"
+simple_logger = "5.*"
 
 [dev-dependencies]
 mock_instant = "0.3.*"
