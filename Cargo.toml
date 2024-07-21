@@ -1,6 +1,6 @@
 [package]
 name = "syno-photo-frame"
-version = "0.12.1"
+version = "0.13.0"
 edition = "2021"
 description = "Full-screen slideshow for Synology Photos albums"
 license = "GPL-3.0-or-later"

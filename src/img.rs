@@ -8,6 +8,7 @@ use image::{
     GenericImageView,
 };
 
+use crate::cli::Background;
 use crate::{cli::Rotation, error::ErrorToString};
 
 pub trait Framed {
@@ -16,9 +17,13 @@ pub trait Framed {
     fn fit_to_screen(&self, screen_size: (u32, u32), rotation: Rotation) -> Self;
 
     /// Resizes an image while preserving the aspect ratio, and centers it on screen, filling any
-    /// empty space with blurred background
-    fn fit_to_screen_and_add_background(&self, screen_size: (u32, u32), rotation: Rotation)
-        -> Self;
+    /// empty space with requested background
+    fn fit_to_screen_and_add_background(
+        &self,
+        screen_size: (u32, u32),
+        rotation: Rotation,
+        background: Background,
+    ) -> Self;
 
     /// Adds update icon to an image
     fn overlay_update_icon(&mut self, update_icon: &Self, rotation: Rotation);
@@ -35,11 +40,17 @@ impl Framed for DynamicImage {
         center_on_screen(&resized, screen_size)
     }
 
-    fn fit_to_screen_and_add_background(&self, screen_size: (u32, u32), rotate: Rotation) -> Self {
+    fn fit_to_screen_and_add_background(
+        &self,
+        screen_size: (u32, u32),
+        rotate: Rotation,
+        background: Background,
+    ) -> Self {
         internal_fit_to_screen_and_add_background(
             self,
             screen_size,
             rotate,
+            background,
             brighten_and_blur_background,
         )
     }
@@ -78,6 +89,7 @@ fn internal_fit_to_screen_and_add_background(
     original: &DynamicImage,
     screen_size: (u32, u32),
     rotate: Rotation,
+    background: Background,
     brighten_and_blur: fn(&DynamicImage) -> DynamicImage,
 ) -> DynamicImage {
     let rotated = original.rotate(rotate);
@@ -85,8 +97,6 @@ fn internal_fit_to_screen_and_add_background(
         return rotated;
     }
 
-    let (bg_thread1, bg_thread2) =
-        background_fill_threads(&rotated, screen_size, brighten_and_blur);
     let foreground = resize_to_fit_screen(&rotated, screen_size);
     if foreground.dimensions() == screen_size {
         return foreground;
@@ -95,16 +105,20 @@ fn internal_fit_to_screen_and_add_background(
     let (x_res, y_res) = screen_size;
     let mut final_image = DynamicImage::new_rgb8(x_res, y_res);
 
-    let bg_fill_1 = bg_thread1.join().unwrap();
-    imageops::overlay(&mut final_image, &bg_fill_1, 0, 0);
+    if background == Background::Blur {
+        let (bg_thread1, bg_thread2) =
+            background_fill_threads(&rotated, screen_size, brighten_and_blur);
+        let bg_fill_1 = bg_thread1.join().unwrap();
+        imageops::overlay(&mut final_image, &bg_fill_1, 0, 0);
 
-    let bg_fill_2 = bg_thread2.join().unwrap();
-    imageops::overlay(
-        &mut final_image,
-        &bg_fill_2,
-        (x_res - bg_fill_2.width()) as i64,
-        (y_res - bg_fill_2.height()) as i64,
-    );
+        let bg_fill_2 = bg_thread2.join().unwrap();
+        imageops::overlay(
+            &mut final_image,
+            &bg_fill_2,
+            (x_res - bg_fill_2.width()) as i64,
+            (y_res - bg_fill_2.height()) as i64,
+        );
+    }
 
     let (w_diff, h_diff) = Dimensions::from(screen_size).diff(foreground.dimensions().into());
     imageops::overlay(
@@ -332,6 +346,7 @@ mod tests {
             &original,
             screen,
             Rotation::D0,
+            Background::Blur,
             panicking_brighten_and_blur_stub,
         );
 
@@ -349,6 +364,7 @@ mod tests {
             &original,
             screen,
             Rotation::D0,
+            Background::Blur,
             panicking_brighten_and_blur_stub,
         );
 
@@ -356,6 +372,36 @@ mod tests {
         assert!(result.pixels().all(|(_, _, p)| p == pixel));
     }
 
+    #[test]
+    fn when_background_is_none_then_background_is_not_added() {
+        let original = create_test_image((50, 40), RED);
+        let (x_res, y_res) = (120, 80); /* screen resolution */
+        fn brighten_and_blur_stub(img: &DynamicImage) -> DynamicImage {
+            img.clone()
+        }
+
+        let result = internal_fit_to_screen_and_add_background(
+            &original,
+            (x_res, y_res),
+            Rotation::D0,
+            Background::None,
+            brighten_and_blur_stub,
+        );
+
+        assert_eq!(result.pixels().count(), (x_res * y_res) as usize);
+        let expected_bg_w = 10;
+        for y in 0..y_res {
+            /* Check left background fill is black */
+            for x in 0..expected_bg_w {
+                assert_eq!(result.get_pixel(x, y), Rgba([0, 0, 0, 255]));
+            }
+            /* Check right background fill is black */
+            for x in x_res - expected_bg_w..x_res {
+                assert_eq!(result.get_pixel(x, y), Rgba([0, 0, 0, 255]))
+            }
+        }        
+    }
+    
     #[test]
     fn when_smaller_image_fits_vertically_then_background_fills_left_and_right_space() {
         let mut original = create_test_image((50, 40), RED);
@@ -379,6 +425,7 @@ mod tests {
             &original,
             (x_res, y_res),
             Rotation::D0,
+            Background::Blur,
             brighten_and_blur_stub,
         );
 
@@ -419,6 +466,7 @@ mod tests {
             &original,
             (x_res, y_res),
             Rotation::D0,
+            Background::Blur,
             brighten_and_blur_stub,
         );
 
@@ -459,6 +507,7 @@ mod tests {
             &original,
             (x_res, y_res),
             Rotation::D0,
+            Background::Blur,
             brighten_and_blur_stub,
         );
 
@@ -499,6 +548,7 @@ mod tests {
             &original,
             (x_res, y_res),
             Rotation::D0,
+            Background::Blur,
             brighten_and_blur_stub,
         );
 

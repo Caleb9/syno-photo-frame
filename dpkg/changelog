@@ -1,3 +1,10 @@
+syno-photo-frame (0.13.0) stable; urgency=low
+  [Piotr Karasinski ]
+  * Add `--background` option to select between blurred or black
+    background
+
+ -- Piotr-Karasinski <7767011+Caleb9@users.noreply.github.com>  Sun, 21 Jul 2024 12:00:00 +0200
+
 syno-photo-frame (0.12.0) stable; urgency=low
   [Piotr Karasinski ]
   * Add `--rotate` option for screen rotation

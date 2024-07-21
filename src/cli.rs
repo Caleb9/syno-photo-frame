@@ -46,6 +46,10 @@ pub struct Cli {
     #[arg(short = 't', long, value_enum, default_value_t = Transition::Crossfade)]
     pub transition: Transition,
 
+    /// Background fill effect
+    #[arg(long, value_enum, default_value_t = Background::Blur)]
+    pub background: Background,
+
     /// Rotate display to match screen orientation
     #[arg(
         long = "rotate",
@@ -111,6 +115,14 @@ pub enum Transition {
     None,
 }
 
+/// Background fill effect
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum Background {
+    /// Blur the photo
+    Blur,
+    /// Disable background (black)
+    None,
+}
 const ROTATIONS: [&str; 4] = ["0", "90", "180", "270"];
 
 /// Screen rotation in degrees

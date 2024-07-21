@@ -185,7 +185,9 @@ fn photo_fetcher_thread<'a, C: Client + Clone + Send>(
         let photo_result = slideshow
             .get_next_photo((&client, cookie_store), random)
             .and_then(|bytes| img::load_from_memory(&bytes).map_err(SlideshowError::Other))
-            .map(|image| image.fit_to_screen_and_add_background(screen_size, cli.rotation));
+            .map(|image| {
+                image.fit_to_screen_and_add_background(screen_size, cli.rotation, cli.background)
+            });
         /* Blocks until photo is received by the main thread */
         let send_result = photo_sender.send(photo_result);
         if send_result.is_err() {
