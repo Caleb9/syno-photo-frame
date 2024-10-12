@@ -1,5 +1,8 @@
 # Syno Photo Frame
 
+[![Crates.io
+Version](https://img.shields.io/crates/v/syno-photo-frame)](https://crates.io/crates/syno-photo-frame)
+
 [Synology
 Photos](https://www.synology.com/en-global/dsm/feature/photos)
 full-screen slideshow for Raspberry Pi.
