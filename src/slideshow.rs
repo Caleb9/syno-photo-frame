@@ -5,20 +5,19 @@ use std::{
 
 use bytes::Bytes;
 
+use crate::api_client::ApiClient;
 use crate::{
-    api_photos::{self, dto::Album, PhotosApiError, SharingId, SortBy},
+    api_photos::{dto::Album, PhotosApiError, SortBy},
     cli::{Order, SourceSize},
     error::ErrorToString,
-    http::{Client, CookieStore, StatusCode, Url},
+    http::StatusCode,
     Random,
 };
 
 /// Holds the slideshow state and queries API to fetch photos.
 #[derive(Debug)]
-pub struct Slideshow<'a> {
-    api_url: Url,
-    sharing_id: SharingId,
-    password: &'a Option<String>,
+pub struct Slideshow<A> {
+    api_client: A,
     /// Indices of photos in an album in reverse order (so we can pop them off easily)
     photo_display_sequence: Vec<u32>,
     order: Order,
@@ -26,30 +25,15 @@ pub struct Slideshow<'a> {
     source_size: SourceSize,
 }
 
-#[derive(Debug)]
-pub enum SlideshowError {
-    Login(PhotosApiError),
-    Other(String),
-}
-
-impl<'a> Slideshow<'a> {
-    pub fn build(share_link: &Url) -> Result<Slideshow<'a>, String> {
-        let (api_url, sharing_id) = api_photos::parse_share_link(share_link)?;
-
-        Ok(Slideshow {
-            api_url,
-            sharing_id,
-            password: &None,
+impl<A: ApiClient> Slideshow<A> {
+    pub fn new(api_client: A) -> Self {
+        Self {
+            api_client,
             photo_display_sequence: vec![],
             order: Order::ByDate,
             random_start: false,
             source_size: SourceSize::L,
-        })
-    }
-
-    pub fn with_password(mut self, password: &'a Option<String>) -> Self {
-        self.password = password;
-        self
+        }
     }
 
     pub fn with_ordering(mut self, order: Order) -> Self {
@@ -67,47 +51,32 @@ impl<'a> Slideshow<'a> {
         self
     }
 
-    pub fn get_next_photo(
-        &mut self,
-        (client, cookie_store): (&impl Client, &impl CookieStore),
-        random: Random,
-    ) -> Result<Bytes, SlideshowError> {
-        if !self.is_logged_in(cookie_store) {
-            api_photos::login(client, &self.api_url, &self.sharing_id, self.password)
-                .map_err(SlideshowError::Login)?;
+    pub fn get_next_photo(&mut self, random: Random) -> Result<Bytes, SlideshowError> {
+        if !self.api_client.is_logged_in() {
+            self.api_client.login().map_err(SlideshowError::Login)?;
         }
         loop {
             if self.slideshow_ended() {
-                self.initialize(client, random)?;
+                self.initialize(random)?;
             }
 
             let photo_index = self
                 .photo_display_sequence
                 .pop()
                 .expect("photos should not be empty");
-            let photo = api_photos::get_album_contents(
-                client,
-                &self.api_url,
-                &self.sharing_id,
-                photo_index,
-                1.try_into().unwrap(),
-                self.order.into(),
-            )
-            .map_err_to_string()
-            .map_err(SlideshowError::Other)?
-            .pop();
+            let photo = self
+                .api_client
+                .get_album_contents(photo_index, 1.try_into().unwrap(), self.order.into())
+                .map_err_to_string()
+                .map_err(SlideshowError::Other)?
+                .pop();
 
             if let Some(photo) = photo {
-                let photo_bytes_result = api_photos::get_photo(
-                    client,
-                    &self.api_url,
-                    &self.sharing_id,
-                    (
-                        photo.id,
-                        &photo.additional.thumbnail.cache_key,
-                        self.source_size,
-                    ),
-                );
+                let photo_bytes_result = self.api_client.get_photo((
+                    photo.id,
+                    &photo.additional.thumbnail.cache_key,
+                    self.source_size,
+                ));
                 match photo_bytes_result {
                     Ok(photo_bytes) => break Ok(photo_bytes),
                     Err(PhotosApiError::InvalidHttpResponse(StatusCode::NOT_FOUND)) => {
@@ -124,24 +93,16 @@ impl<'a> Slideshow<'a> {
         }
     }
 
-    fn is_logged_in(&self, cookie_store: &impl CookieStore) -> bool {
-        cookie_store.cookies(&self.api_url).is_some()
-    }
-
     fn slideshow_ended(&self) -> bool {
         self.photo_display_sequence.is_empty()
     }
 
-    fn initialize(
-        &mut self,
-        client: &impl Client,
-        (rand_gen_range, rand_shuffle): Random,
-    ) -> Result<(), String> {
+    fn initialize(&mut self, (rand_gen_range, rand_shuffle): Random) -> Result<(), String> {
         assert!(
             self.photo_display_sequence.is_empty(),
             "already initialized"
         );
-        let item_count = self.get_photos_count(client)?;
+        let item_count = self.get_photos_count()?;
         if item_count < 1 {
             return Err("Album is empty".to_string());
         }
@@ -170,8 +131,10 @@ impl<'a> Slideshow<'a> {
         Ok(())
     }
 
-    fn get_photos_count(&self, client: &impl Client) -> Result<u32, String> {
-        let album = api_photos::get_album_contents_count(client, &self.api_url, &self.sharing_id)
+    fn get_photos_count(&self) -> Result<u32, String> {
+        let album = self
+            .api_client
+            .get_album_contents_count()
             .map_err_to_string()?
             .pop();
         if let Some(Album { item_count }) = album {
@@ -180,6 +143,12 @@ impl<'a> Slideshow<'a> {
             Err("Album not found".to_string())
         }
     }
+}
+
+#[derive(Debug)]
+pub enum SlideshowError {
+    Login(PhotosApiError),
+    Other(String),
 }
 
 impl From<Order> for SortBy {
@@ -214,9 +183,11 @@ impl From<String> for SlideshowError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api_client::SynoApiClient;
+    use crate::http::HttpClient;
     use crate::{
         api_photos::dto,
-        http::{Jar, MockResponse},
+        http::{CookieStore, Jar, MockHttpResponse, Url},
         test_helpers::{self, MockClient},
     };
 
@@ -226,7 +197,6 @@ mod tests {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
-        let mut slideshow = new_slideshow(SHARE_LINK);
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
@@ -286,9 +256,11 @@ mod tests {
                     .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
                 Ok(get_photo_response)
             });
+        let cookie_store = Jar::default();
+        let mut slideshow = new_slideshow(&client_mock, &cookie_store, SHARE_LINK);
 
         /* Act */
-        let result = slideshow.get_next_photo((&client_mock, &Jar::default()), DUMMY_RANDOM);
+        let result = slideshow.get_next_photo(DUMMY_RANDOM);
 
         /* Assert */
         assert!(result.is_ok());
@@ -308,7 +280,6 @@ mod tests {
     ) {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
-        let mut slideshow = new_slideshow(SHARE_LINK).with_random_start(true);
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
@@ -365,9 +336,12 @@ mod tests {
             },
             |_| (),
         );
+        let cookie_store = Jar::default();
+        let mut slideshow =
+            new_slideshow(&client_mock, &cookie_store, SHARE_LINK).with_random_start(true);
 
         /* Act */
-        let result = slideshow.get_next_photo((&client_mock, &Jar::default()), random_mock);
+        let result = slideshow.get_next_photo(random_mock);
 
         /* Assert */
         assert!(result.is_ok());
@@ -383,7 +357,6 @@ mod tests {
         fn test_case(source_size: SourceSize, expected_size_param: &'static str) {
             /* Arrange */
             const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
-            let mut slideshow = new_slideshow(SHARE_LINK).with_source_size(source_size);
             let mut client_mock = MockClient::new();
             client_mock
                 .expect_post()
@@ -422,9 +395,12 @@ mod tests {
                         .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
                     Ok(get_photo_response)
                 });
+            let cookie_store = Jar::default();
+            let mut slideshow = new_slideshow(&client_mock, &cookie_store, SHARE_LINK)
+                .with_source_size(source_size);
 
             /* Act */
-            let result = slideshow.get_next_photo((&client_mock, &Jar::default()), DUMMY_RANDOM);
+            let result = slideshow.get_next_photo(DUMMY_RANDOM);
 
             /* Assert */
             assert!(result.is_ok());
@@ -437,9 +413,7 @@ mod tests {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
-        let mut slideshow = new_slideshow(SHARE_LINK);
         const NEXT_PHOTO_INDEX: u32 = 2;
-        slideshow.photo_display_sequence = vec![3, NEXT_PHOTO_INDEX];
         const NEXT_PHOTO_ID: i32 = 3;
         const NEXT_PHOTO_CACHE_KEY: &str = "photo3";
         let mut client_mock = MockClient::new();
@@ -477,12 +451,12 @@ mod tests {
                     .return_once(|| Ok(Bytes::from_static(&[])));
                 Ok(get_photo_response)
             });
+        let cookie_store = logged_in_cookie_store(EXPECTED_API_URL);
+        let mut slideshow = new_slideshow(&client_mock, &cookie_store, SHARE_LINK);
+        slideshow.photo_display_sequence = vec![3, NEXT_PHOTO_INDEX];
 
         /* Act */
-        let result = slideshow.get_next_photo(
-            (&client_mock, &logged_in_cookie_store(EXPECTED_API_URL)),
-            DUMMY_RANDOM,
-        );
+        let result = slideshow.get_next_photo(DUMMY_RANDOM);
 
         /* Assert */
         assert!(result.is_ok());
@@ -495,10 +469,8 @@ mod tests {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
-        let mut slideshow = new_slideshow(SHARE_LINK);
         const NEXT_PHOTO_INDEX: u32 = 1;
         const NEXT_NEXT_PHOTO_INDEX: u32 = 2;
-        slideshow.photo_display_sequence = vec![3, NEXT_NEXT_PHOTO_INDEX, NEXT_PHOTO_INDEX];
         const NEXT_PHOTO_ID: i32 = 2;
         const NEXT_PHOTO_CACHE_KEY: &str = "photo2";
         let mut client_mock = MockClient::new();
@@ -525,7 +497,7 @@ mod tests {
                 )
             })
             .return_once(|_, _| {
-                let mut not_found_response = MockResponse::new();
+                let mut not_found_response = MockHttpResponse::new();
                 not_found_response
                     .expect_status()
                     .returning(|| StatusCode::NOT_FOUND);
@@ -559,12 +531,12 @@ mod tests {
                     .return_once(|| Ok(Bytes::from_static(&[])));
                 Ok(get_photo_response)
             });
+        let cookie_store = logged_in_cookie_store(EXPECTED_API_URL);
+        let mut slideshow = new_slideshow(&client_mock, &cookie_store, SHARE_LINK);
+        slideshow.photo_display_sequence = vec![3, NEXT_NEXT_PHOTO_INDEX, NEXT_PHOTO_INDEX];
 
         /* Act */
-        let result = slideshow.get_next_photo(
-            (&client_mock, &logged_in_cookie_store(EXPECTED_API_URL)),
-            DUMMY_RANDOM,
-        );
+        let result = slideshow.get_next_photo(DUMMY_RANDOM);
 
         /* Assert */
         assert!(result.is_ok());
@@ -575,7 +547,6 @@ mod tests {
     fn when_random_order_then_photo_display_sequence_is_shuffled() {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
-        let mut slideshow = new_slideshow(SHARE_LINK).with_ordering(Order::Random);
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
@@ -623,8 +594,12 @@ mod tests {
             },
         );
 
+        let cookie_store = Jar::default();
+        let mut slideshow =
+            new_slideshow(&client_mock, &cookie_store, SHARE_LINK).with_ordering(Order::Random);
+
         /* Act */
-        let result = slideshow.get_next_photo((&client_mock, &Jar::default()), random_mock);
+        let result = slideshow.get_next_photo(random_mock);
 
         assert!(result.is_ok());
         assert_eq!(slideshow.photo_display_sequence, vec![5, 2, 4, 1]);
@@ -636,9 +611,7 @@ mod tests {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
-        let mut slideshow = new_slideshow(SHARE_LINK);
         const NEXT_PHOTO_INDEX: u32 = 3;
-        slideshow.photo_display_sequence = vec![5, 4, NEXT_PHOTO_INDEX];
         let mut client_mock = MockClient::new();
         client_mock
             .expect_post()
@@ -692,12 +665,12 @@ mod tests {
                     .return_once(|| Ok(Bytes::from_static(&[])));
                 Ok(get_photo_response)
             });
+        let cookie_store = logged_in_cookie_store(EXPECTED_API_URL);
+        let mut slideshow = new_slideshow(&client_mock, &cookie_store, SHARE_LINK);
+        slideshow.photo_display_sequence = vec![5, 4, NEXT_PHOTO_INDEX];
 
         /* Act */
-        let result = slideshow.get_next_photo(
-            (&client_mock, &logged_in_cookie_store(EXPECTED_API_URL)),
-            DUMMY_RANDOM,
-        );
+        let result = slideshow.get_next_photo(DUMMY_RANDOM);
 
         /* Assert */
         assert!(result.is_ok());
@@ -710,10 +683,14 @@ mod tests {
 
     const DUMMY_RANDOM: Random = (|_| 42, |_| ());
 
-    fn new_slideshow(share_link: &str) -> Slideshow {
+    fn new_slideshow<'a, H: HttpClient, C: CookieStore>(
+        http_client: &'a H,
+        cookie_store: &'a C,
+        share_link: &str,
+    ) -> Slideshow<SynoApiClient<'a, H, C>> {
         let share_link = Url::parse(share_link).unwrap();
-
-        Slideshow::build(&share_link).unwrap()
+        let api_client = SynoApiClient::build(http_client, cookie_store, &share_link).unwrap();
+        Slideshow::new(api_client)
     }
 
     fn is_list_form(form: &[(&str, &str)], offset: &str, limit: &str) -> bool {

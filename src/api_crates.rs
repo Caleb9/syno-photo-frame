@@ -1,6 +1,6 @@
-use crate::http::{Client, Response};
+use crate::http::{HttpClient, HttpResponse};
 
-pub fn get_latest_version(client: &impl Client) -> Result<dto::Crate, String> {
+pub fn get_latest_version(client: &impl HttpClient) -> Result<dto::Crate, String> {
     let response = client.get("https://index.crates.io/sy/no/syno-photo-frame", &[])?;
     let status = response.status();
     if status.is_success() {
@@ -33,7 +33,7 @@ pub mod dto {
 mod tests {
     use super::*;
     use crate::{
-        http::{MockResponse, StatusCode},
+        http::{MockHttpResponse, StatusCode},
         test_helpers::MockClient,
     };
 
@@ -45,7 +45,7 @@ mod tests {
             {"vers": "0.4.0", "yanked": false}
             {"vers": "0.5.0", "yanked": false}
             {"vers": "0.6.0", "yanked": true}"#;
-        let mut response_mock = MockResponse::new();
+        let mut response_mock = MockHttpResponse::new();
         response_mock.expect_status().return_const(StatusCode::OK);
         response_mock
             .expect_text()

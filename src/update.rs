@@ -8,7 +8,7 @@ use image::DynamicImage;
 use crate::{
     api_crates, asset,
     cli::Rotation,
-    http::Client,
+    http::HttpClient,
     img::Framed,
     sdl::{Sdl, TextureIndex},
 };
@@ -45,15 +45,14 @@ impl UpdateNotification {
     }
 }
 
-pub fn check_for_updates_thread<'a, C: Client + Clone + Send>(
+pub fn check_for_updates_thread<'a, C: HttpClient + Sync>(
     client: &'a C,
     installed_version: &'a str,
     thread_scope: &'a Scope<'a, '_>,
     update_check_sender: SyncSender<bool>,
 ) -> ScopedJoinHandle<'a, ()> {
-    let client = client.clone();
     thread_scope.spawn(move || {
-        match api_crates::get_latest_version(&client) {
+        match api_crates::get_latest_version(client) {
             Ok(remote_crate) => {
                 if remote_crate.vers != installed_version {
                     log::info!(

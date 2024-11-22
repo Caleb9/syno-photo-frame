@@ -18,9 +18,10 @@ use std::{thread::sleep as thread_sleep, time::Instant};
 use {mock_instant::Instant, tests::fake_sleep as thread_sleep};
 
 use crate::{
+    api_client::SynoApiClient,
     cli::{Cli, Rotation},
     error::FrameError,
-    http::{Client, CookieStore},
+    http::{CookieStore, HttpClient},
     img::{DynamicImage, Framed},
     sdl::{Sdl, TextureIndex},
     slideshow::{Slideshow, SlideshowError},
@@ -33,6 +34,7 @@ pub mod http;
 pub mod logging;
 pub mod sdl;
 
+mod api_client;
 mod api_crates;
 mod api_photos;
 mod asset;
@@ -53,7 +55,7 @@ pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
 pub struct QuitEvent;
 
 /// Slideshow loop
-pub fn run<C: Client + Clone + Send>(
+pub fn run<C: HttpClient + Sync>(
     cli: &Cli,
     (client, cookie_store): (&C, &impl CookieStore),
     sdl: &mut impl Sdl,
@@ -104,7 +106,7 @@ fn show_welcome_screen(cli: &Cli, sdl: &mut impl Sdl) -> FrameResult<DynamicImag
     Ok(welcome_img)
 }
 
-fn slideshow_loop<C: Client + Clone + Send>(
+fn slideshow_loop<C: HttpClient + Sync>(
     cli: &Cli,
     http: (&C, &impl CookieStore),
     sdl: &mut impl Sdl,
@@ -171,19 +173,23 @@ fn slideshow_loop<C: Client + Clone + Send>(
     })
 }
 
-fn photo_fetcher_thread<'a, C: Client + Clone + Send>(
+fn photo_fetcher_thread<'a, C: HttpClient + Sync>(
     cli: &'a Cli,
-    (client, cookie_store): (&'a C, &'a impl CookieStore),
+    (http_client, cookie_store): (&'a C, &'a impl CookieStore),
     screen_size: (u32, u32),
     random: Random,
     thread_scope: &'a Scope<'a, '_>,
     photo_sender: SyncSender<Result<DynamicImage, SlideshowError>>,
 ) -> Result<ScopedJoinHandle<'a, ()>, String> {
-    let mut slideshow = new_slideshow(cli)?;
-    let client = client.clone();
+    let api_client = SynoApiClient::build(http_client, cookie_store, &cli.share_link)?
+        .with_password(&cli.password);
+    let mut slideshow = Slideshow::new(api_client)
+        .with_ordering(cli.order)
+        .with_random_start(cli.random_start)
+        .with_source_size(cli.source_size);
     Ok(thread_scope.spawn(move || loop {
         let photo_result = slideshow
-            .get_next_photo((&client, cookie_store), random)
+            .get_next_photo(random)
             .and_then(|bytes| img::load_from_memory(&bytes).map_err(SlideshowError::Other))
             .map(|image| {
                 image.fit_to_screen_and_add_background(screen_size, cli.rotation, cli.background)
@@ -194,14 +200,6 @@ fn photo_fetcher_thread<'a, C: Client + Clone + Send>(
             break;
         }
     }))
-}
-
-fn new_slideshow(cli: &Cli) -> Result<Slideshow, String> {
-    Ok(Slideshow::build(&cli.share_link)?
-        .with_password(&cli.password)
-        .with_ordering(cli.order)
-        .with_random_start(cli.random_start)
-        .with_source_size(cli.source_size))
 }
 
 fn load_photo_or_error_screen(
@@ -240,7 +238,7 @@ mod tests {
     use crate::{
         api_photos::{dto, PhotosApiError},
         cli::Parser,
-        http::{Jar, MockResponse, StatusCode},
+        http::{Jar, MockHttpResponse, StatusCode},
         sdl::MockSdl,
         test_helpers::MockClient,
     };
@@ -255,28 +253,24 @@ mod tests {
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
 
         let mut client_stub = MockClient::new();
-        client_stub.expect_clone().return_once(|| {
-            let mut client_clone = MockClient::new();
-            client_clone
-                .expect_post()
-                .withf(|url, form, _| {
-                    url == EXPECTED_API_URL && test_helpers::is_login_form(form, "FakeSharingId")
-                })
-                .returning(|_, _, _| {
-                    let mut error_response = test_helpers::new_ok_response();
-                    error_response
-                        .expect_json::<dto::ApiResponse<dto::Login>>()
-                        .return_once(|| {
-                            Ok(dto::ApiResponse {
-                                success: false,
-                                error: Some(dto::ApiError { code: 42 }),
-                                data: None,
-                            })
-                        });
-                    Ok(error_response)
-                });
-            client_clone
-        });
+        client_stub
+            .expect_post()
+            .withf(|url, form, _| {
+                url == EXPECTED_API_URL && test_helpers::is_login_form(form, "FakeSharingId")
+            })
+            .returning(|_, _, _| {
+                let mut error_response = test_helpers::new_ok_response();
+                error_response
+                    .expect_json::<dto::ApiResponse<dto::Login>>()
+                    .return_once(|| {
+                        Ok(dto::ApiResponse {
+                            success: false,
+                            error: Some(dto::ApiError { code: 42 }),
+                            data: None,
+                        })
+                    });
+                Ok(error_response)
+            });
         /* Avoid overflow when setting initial last_change */
         const DISPLAY_INTERVAL: u64 = 30;
         MockClock::set_time(Duration::from_secs(DISPLAY_INTERVAL));
@@ -304,16 +298,12 @@ mod tests {
     #[test]
     fn when_login_fails_with_http_error_then_loop_terminates() {
         let mut client_stub = MockClient::new();
-        client_stub.expect_clone().return_once(|| {
-            let mut client_clone = MockClient::new();
-            client_clone.expect_post().returning(|_, _, _| {
-                let mut error_response = MockResponse::new();
-                error_response
-                    .expect_status()
-                    .return_const(StatusCode::FORBIDDEN);
-                Ok(error_response)
-            });
-            client_clone
+        client_stub.expect_post().returning(|_, _, _| {
+            let mut error_response = MockHttpResponse::new();
+            error_response
+                .expect_status()
+                .return_const(StatusCode::FORBIDDEN);
+            Ok(error_response)
         });
         /* Avoid overflow when setting initial last_change */
         const DISPLAY_INTERVAL: u64 = 30;
@@ -346,27 +336,21 @@ mod tests {
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
 
         let mut client_stub = MockClient::new();
-        client_stub.expect_clone().return_once(|| {
-            let mut client_clone = MockClient::new();
-            client_clone
-                .expect_post()
-                .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-                .return_once(|_, _, _| {
-                    Ok(test_helpers::new_success_response_with_json(dto::Login {}))
-                });
-            /* Simulate failing get_album_contents_count request */
-            client_clone
-                .expect_post()
-                .withf(|_, form, _| test_helpers::is_get_count_form(form))
-                .returning(|_, _, _| {
-                    let mut error_response = MockResponse::new();
-                    error_response
-                        .expect_status()
-                        .return_const(StatusCode::NOT_FOUND);
-                    Ok(error_response)
-                });
-            client_clone
-        });
+        client_stub
+            .expect_post()
+            .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
+            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(dto::Login {})));
+        /* Simulate failing get_album_contents_count request */
+        client_stub
+            .expect_post()
+            .withf(|_, form, _| test_helpers::is_get_count_form(form))
+            .returning(|_, _, _| {
+                let mut error_response = MockHttpResponse::new();
+                error_response
+                    .expect_status()
+                    .return_const(StatusCode::NOT_FOUND);
+                Ok(error_response)
+            });
 
         /* Avoid overflow when setting initial last_change */
         const DISPLAY_INTERVAL: u64 = 30;

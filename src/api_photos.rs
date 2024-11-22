@@ -2,16 +2,13 @@ use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     ops::Deref,
-    sync::OnceLock,
 };
 
 use bytes::Bytes;
-use regex::Regex;
 
 use crate::{
     cli::SourceSize,
-    error::ErrorToString,
-    http::{Client, Response, StatusCode, Url},
+    http::{HttpClient, HttpResponse, StatusCode, Url},
 };
 
 use PhotosApiError::{InvalidApiResponse, InvalidHttpResponse};
@@ -23,22 +20,12 @@ pub enum PhotosApiError {
     InvalidApiResponse(&'static str, i32),
 }
 
+// TODO: move to api_client
 #[derive(Debug)]
-pub struct SharingId(String);
-
-/// Returns Synology Photos API URL and sharing id extracted from album share link
-pub fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId), String> {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r"^(https?://.+)/([^/]+)/?$").unwrap());
-    let Some(captures) = re.captures(share_link.as_str()) else {
-        return Err(format!("Invalid share link: {share_link}"));
-    };
-    let api_url = Url::parse(&format!("{}/webapi/entry.cgi", &captures[1])).map_err_to_string()?;
-    Ok((api_url, SharingId(captures[2].to_owned())))
-}
+pub struct SharingId(pub String);
 
 pub fn login(
-    client: &impl Client,
+    client: &impl HttpClient,
     api_url: &Url,
     sharing_id: &SharingId,
     password: &Option<String>,
@@ -62,7 +49,7 @@ pub fn login(
 }
 
 pub fn get_album_contents_count(
-    client: &impl Client,
+    client: &impl HttpClient,
     api_url: &Url,
     sharing_id: &SharingId,
 ) -> Result<Vec<dto::Album>, PhotosApiError> {
@@ -101,7 +88,7 @@ pub enum SortBy {
 
 /// Gets metadata for photos contained in an album
 pub fn get_album_contents(
-    client: &impl Client,
+    client: &impl HttpClient,
     api_url: &Url,
     sharing_id: &SharingId,
     offset: u32,
@@ -138,7 +125,7 @@ pub fn get_album_contents(
 
 /// Gets JPEG photo bytes
 pub fn get_photo(
-    client: &impl Client,
+    client: &impl HttpClient,
     api_url: &Url,
     sharing_id: &SharingId,
     (photo_id, photo_cache_key, source_size): (i32, &str, SourceSize),
@@ -169,7 +156,7 @@ pub fn get_photo(
 
 fn read_response<R, S, T>(response: R, on_success: S) -> Result<T, PhotosApiError>
 where
-    R: Response,
+    R: HttpResponse,
     S: FnOnce(R) -> Result<T, PhotosApiError>,
 {
     let status = response.status();
@@ -191,7 +178,7 @@ impl Deref for SharingId {
 impl TryFrom<u32> for Limit {
     type Error = &'static str;
 
-    fn try_from(value: u32) -> core::result::Result<Self, Self::Error> {
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
         if value > 5000 {
             Err("Limit only accepts values up to 5000")
         } else {
@@ -285,33 +272,5 @@ pub mod dto {
     #[derive(Debug, Deserialize)]
     pub struct Thumbnail {
         pub cache_key: String,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_share_link_is_ok_for_valid_link() {
-        test_case(
-            "https://test.dsm.addr:5001/aa/sharing/FakeSharingId",
-            "https://test.dsm.addr:5001/aa/sharing/webapi/entry.cgi",
-        );
-        test_case(
-            "https://test.dsm.addr/photo/aa/sharing/FakeSharingId",
-            "https://test.dsm.addr/photo/aa/sharing/webapi/entry.cgi",
-        );
-
-        fn test_case(share_link: &str, expected_api_url: &str) {
-            let link = Url::parse(share_link).unwrap();
-
-            let result = parse_share_link(&link);
-
-            assert!(result.is_ok());
-            let (api_url, sharing_id) = result.unwrap();
-            assert_eq!(api_url.as_str(), expected_api_url);
-            assert_eq!(sharing_id.0, "FakeSharingId");
-        }
     }
 }

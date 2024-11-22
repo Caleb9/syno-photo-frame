@@ -3,23 +3,23 @@ use serde::de::DeserializeOwned;
 
 use crate::{
     api_photos::dto,
-    http::{Client, CookieStore, Jar, MockResponse, StatusCode, Url},
+    http::{CookieStore, HttpClient, Jar, MockHttpResponse, StatusCode, Url},
 };
 
 mock! {
     pub Client {}
 
-    impl Client for Client {
-        type Response = MockResponse;
+    impl HttpClient for Client {
+        type Response = MockHttpResponse;
 
         fn post<'a>(
             &self,
             url: &str,
             form: &[(&'a str, &'a str)],
             header: Option<(&'a str, &'a str)>,
-        ) -> Result<MockResponse, String>;
+        ) -> Result<MockHttpResponse, String>;
 
-        fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<MockResponse, String>;
+        fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<MockHttpResponse, String>;
     }
 
     impl Clone for Client {
@@ -36,15 +36,15 @@ pub fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> impl CookieStore {
     cookie_store
 }
 
-pub fn new_ok_response() -> MockResponse {
-    let mut response = MockResponse::new();
+pub fn new_ok_response() -> MockHttpResponse {
+    let mut response = MockHttpResponse::new();
     response.expect_status().return_const(StatusCode::OK);
     response
 }
 
 pub fn new_success_response_with_json<T: DeserializeOwned + Send + 'static>(
     data: T,
-) -> MockResponse {
+) -> MockHttpResponse {
     let mut response = new_ok_response();
     response
         .expect_json::<dto::ApiResponse<T>>()

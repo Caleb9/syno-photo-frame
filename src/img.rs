@@ -399,9 +399,9 @@ mod tests {
             for x in x_res - expected_bg_w..x_res {
                 assert_eq!(result.get_pixel(x, y), Rgba([0, 0, 0, 255]))
             }
-        }        
+        }
     }
-    
+
     #[test]
     fn when_smaller_image_fits_vertically_then_background_fills_left_and_right_space() {
         let mut original = create_test_image((50, 40), RED);

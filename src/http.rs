@@ -13,8 +13,8 @@ use serde::de::DeserializeOwned;
 use crate::error::ErrorToString;
 
 /// Isolates [reqwest::blocking::Client] for testing
-pub trait Client {
-    type Response: Response;
+pub trait HttpClient {
+    type Response: HttpResponse;
 
     fn post(
         &self,
@@ -28,7 +28,7 @@ pub trait Client {
 
 /// Isolates [reqwest::blocking::Response] for testing
 #[cfg_attr(test, mockall::automock)]
-pub trait Response {
+pub trait HttpResponse {
     fn status(&self) -> StatusCode;
 
     /* 'static is needed by automock */
@@ -39,7 +39,7 @@ pub trait Response {
     fn text(self) -> Result<String, String>;
 }
 
-impl Client for ReqwestClient {
+impl HttpClient for ReqwestClient {
     type Response = ReqwestResponse;
 
     fn post(
@@ -63,7 +63,7 @@ impl Client for ReqwestClient {
     }
 }
 
-impl Response for ReqwestResponse {
+impl HttpResponse for ReqwestResponse {
     fn status(&self) -> StatusCode {
         ReqwestResponse::status(self)
     }

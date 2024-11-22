@@ -16,8 +16,8 @@ use syno_photo_frame::{
 
 fn main() -> Result<(), Box<dyn Error>> {
     SimpleLogger::new()
-        .with_level(LevelFilter::Info)
-        .env()
+        .with_level(LevelFilter::Info) /* Default */
+        .env() /* Allow overwriting default level with RUST_LOG env var */
         .init()?;
 
     match init_and_run() {
@@ -37,12 +37,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
+/// Setup "real" dependencies and run
 fn init_and_run() -> FrameResult<()> {
     let cli = Cli::parse();
 
     /* HTTP client */
     let cookie_store = Arc::new(reqwest::cookie::Jar::default());
-    let client = ClientBuilder::new()
+    let http_client = ClientBuilder::new()
         .cookie_provider(Arc::clone(&cookie_store))
         .timeout(Duration::from_secs(cli.timeout_seconds as u64))
         .build()
@@ -72,7 +73,7 @@ fn init_and_run() -> FrameResult<()> {
     syno_photo_frame::run(
         &cli,
         (
-            &LoggingClientDecorator::new(client).with_level(log::Level::Trace),
+            &LoggingClientDecorator::new(http_client).with_level(log::Level::Trace),
             cookie_store.as_ref(),
         ),
         &mut sdl,
