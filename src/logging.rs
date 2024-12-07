@@ -2,6 +2,7 @@
 
 use core::fmt::Debug;
 
+use anyhow::Result;
 use log::Level;
 
 use crate::http::{HttpClient, HttpResponse};
@@ -39,7 +40,7 @@ where
         url: &str,
         form: &[(&str, &str)],
         header: Option<(&str, &str)>,
-    ) -> Result<Self::Response, String> {
+    ) -> Result<Self::Response> {
         /* Obfuscate password from the form parameters */
         let obfuscated_form = form
             .iter()
@@ -54,7 +55,7 @@ where
         response
     }
 
-    fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<Self::Response, String> {
+    fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<Self::Response> {
         log::log!(self.level, "GET {url}, query: {query:?}");
         let response = self.client.get(url, query);
         log::log!(self.level, "{response:?}");

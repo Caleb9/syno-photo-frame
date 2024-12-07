@@ -1,15 +1,15 @@
-use std::thread::{self, JoinHandle};
-
 pub use image::{open, DynamicImage};
 
+use std::thread::{self, JoinHandle};
+
+use anyhow::Result;
 use image::{
     self,
     imageops::{self, FilterType},
     GenericImageView,
 };
 
-use crate::cli::Background;
-use crate::{cli::Rotation, error::ErrorToString};
+use crate::cli::{Background, Rotation};
 
 pub trait Framed {
     /// Resizes an image while preserving the aspect ratio, and centers it on screen. Returns a new
@@ -80,8 +80,8 @@ impl Framed for DynamicImage {
     }
 }
 
-pub fn load_from_memory(buffer: &[u8]) -> Result<DynamicImage, String> {
-    image::load_from_memory(buffer).map_err_to_string()
+pub fn load_from_memory(buffer: &[u8]) -> Result<DynamicImage> {
+    Ok(image::load_from_memory(buffer)?)
 }
 
 /// Testable version of [Framed::fit_to_screen_and_add_background]

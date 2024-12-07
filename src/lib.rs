@@ -2,6 +2,8 @@
 //!
 //! syno_photo_frame is a full-screen slideshow app for Synology Photos albums
 
+pub use api_client::LoginError;
+
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -13,30 +15,28 @@ use std::{
 
 #[cfg(not(test))]
 use std::{thread::sleep as thread_sleep, time::Instant};
-
 #[cfg(test)]
 use {mock_instant::Instant, tests::fake_sleep as thread_sleep};
 
+use anyhow::Result;
+
 use crate::{
-    api_client::SynoApiClient,
+    api_client::syno_client::SynoApiClient,
     cli::{Cli, Rotation},
-    error::FrameError,
     http::{CookieStore, HttpClient},
     img::{DynamicImage, Framed},
     sdl::{Sdl, TextureIndex},
-    slideshow::{Slideshow, SlideshowError},
+    slideshow::Slideshow,
     update::UpdateNotification,
 };
 
+mod api_client;
 pub mod cli;
-pub mod error;
 pub mod http;
 pub mod logging;
 pub mod sdl;
 
-mod api_client;
 mod api_crates;
-mod api_photos;
 mod asset;
 mod img;
 mod slideshow;
@@ -45,8 +45,6 @@ mod update;
 
 #[cfg(test)]
 mod test_helpers;
-
-pub type FrameResult<T> = Result<T, FrameError>;
 
 /// Functions for randomized slideshow ordering
 pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
@@ -61,10 +59,10 @@ pub fn run<C: HttpClient + Sync>(
     sdl: &mut impl Sdl,
     random: Random,
     installed_version: &str,
-) -> FrameResult<()> {
+) -> Result<()> {
     let current_image = show_welcome_screen(cli, sdl)?;
 
-    thread::scope::<'_, _, FrameResult<()>>(|thread_scope| {
+    thread::scope::<'_, _, Result<()>>(|thread_scope| {
         let (update_check_sender, update_check_receiver) = mpsc::sync_channel(1);
         if !cli.disable_update_check {
             update::check_for_updates_thread(
@@ -86,7 +84,7 @@ pub fn run<C: HttpClient + Sync>(
     })
 }
 
-fn show_welcome_screen(cli: &Cli, sdl: &mut impl Sdl) -> FrameResult<DynamicImage> {
+fn show_welcome_screen(cli: &Cli, sdl: &mut impl Sdl) -> Result<DynamicImage> {
     let welcome_img = match &cli.splash {
         None => asset::welcome_screen(sdl.size(), cli.rotation)?,
         Some(path) => {
@@ -113,7 +111,7 @@ fn slideshow_loop<C: HttpClient + Sync>(
     random: Random,
     update_check_receiver: Receiver<bool>,
     mut current_image: DynamicImage,
-) -> FrameResult<()> {
+) -> Result<()> {
     /* Load the first photo as soon as it's ready. */
     let mut last_change = Instant::now() - cli.photo_change_interval;
     let screen_size = sdl.size();
@@ -121,7 +119,7 @@ fn slideshow_loop<C: HttpClient + Sync>(
     let (photo_sender, photo_receiver) = mpsc::sync_channel(1);
     const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
 
-    thread::scope::<'_, _, FrameResult<()>>(|thread_scope| {
+    thread::scope::<'_, _, Result<()>>(|thread_scope| {
         photo_fetcher_thread(cli, http, screen_size, random, thread_scope, photo_sender)?;
 
         let loop_result = loop {
@@ -142,9 +140,9 @@ fn slideshow_loop<C: HttpClient + Sync>(
 
             if let Ok(next_photo_result) = photo_receiver.try_recv() {
                 let next_image = match next_photo_result {
-                    Err(SlideshowError::Login(error)) => {
+                    Err(error) if error.is::<LoginError>() => {
                         /* Login error terminates the main thread loop */
-                        break Err(FrameError::Login(error));
+                        break Err(error);
                     }
                     ok_or_other_error => load_photo_or_error_screen(
                         ok_or_other_error,
@@ -179,8 +177,8 @@ fn photo_fetcher_thread<'a, C: HttpClient + Sync>(
     screen_size: (u32, u32),
     random: Random,
     thread_scope: &'a Scope<'a, '_>,
-    photo_sender: SyncSender<Result<DynamicImage, SlideshowError>>,
-) -> Result<ScopedJoinHandle<'a, ()>, String> {
+    photo_sender: SyncSender<Result<DynamicImage>>,
+) -> Result<ScopedJoinHandle<'a, ()>> {
     let api_client = SynoApiClient::build(http_client, cookie_store, &cli.share_link)?
         .with_password(&cli.password);
     let mut slideshow = Slideshow::new(api_client)
@@ -190,7 +188,7 @@ fn photo_fetcher_thread<'a, C: HttpClient + Sync>(
     Ok(thread_scope.spawn(move || loop {
         let photo_result = slideshow
             .get_next_photo(random)
-            .and_then(|bytes| img::load_from_memory(&bytes).map_err(SlideshowError::Other))
+            .and_then(|bytes| img::load_from_memory(&bytes))
             .map(|image| {
                 image.fit_to_screen_and_add_background(screen_size, cli.rotation, cli.background)
             });
@@ -203,20 +201,17 @@ fn photo_fetcher_thread<'a, C: HttpClient + Sync>(
 }
 
 fn load_photo_or_error_screen(
-    next_photo_result: Result<DynamicImage, SlideshowError>,
+    next_photo_result: Result<DynamicImage>,
     screen_size: (u32, u32),
     rotation: Rotation,
     update_notification: &UpdateNotification,
-) -> FrameResult<DynamicImage> {
+) -> Result<DynamicImage> {
     let mut next_image = match next_photo_result {
         Ok(photo) => photo,
-        Err(SlideshowError::Other(error)) => {
+        Err(error) => {
             /* Any non-login error gets logged and an error screen is displayed. */
             log::error!("{error}");
             asset::error_screen(screen_size, rotation)?
-        }
-        Err(SlideshowError::Login(_)) => {
-            panic!("Login error should have been handled in the slideshow_loop")
         }
     };
     if update_notification.is_visible {
@@ -235,24 +230,25 @@ impl Error for QuitEvent {}
 
 #[cfg(test)]
 mod tests {
+    use mock_instant::MockClock;
+
+    use syno_api::dto::{ApiResponse, Error};
+
+    use super::*;
     use crate::{
-        api_photos::{dto, PhotosApiError},
+        api_client::syno_client::Login,
         cli::Parser,
         http::{Jar, MockHttpResponse, StatusCode},
         sdl::MockSdl,
-        test_helpers::MockClient,
+        test_helpers::MockHttpClient,
     };
-
-    use mock_instant::MockClock;
-
-    use super::*;
 
     #[test]
     fn when_login_fails_with_api_error_then_loop_terminates() {
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
 
-        let mut client_stub = MockClient::new();
+        let mut client_stub = MockHttpClient::new();
         client_stub
             .expect_post()
             .withf(|url, form, _| {
@@ -261,11 +257,11 @@ mod tests {
             .returning(|_, _, _| {
                 let mut error_response = test_helpers::new_ok_response();
                 error_response
-                    .expect_json::<dto::ApiResponse<dto::Login>>()
+                    .expect_json::<ApiResponse<Login>>()
                     .return_once(|| {
-                        Ok(dto::ApiResponse {
+                        Ok(ApiResponse {
                             success: false,
-                            error: Some(dto::ApiError { code: 42 }),
+                            error: Some(Error { code: 42 }),
                             data: None,
                         })
                     });
@@ -275,6 +271,11 @@ mod tests {
         const DISPLAY_INTERVAL: u64 = 30;
         MockClock::set_time(Duration::from_secs(DISPLAY_INTERVAL));
         let mut sdl_stub = MockSdl::new().with_default_expectations();
+        /* Hack: Break the loop eventually in case of assertion failure */
+        sdl_stub
+            .expect_handle_quit_event()
+            .times(..5000)
+            .returning(|| Ok(()));
         let cli_command = format!(
             "syno-photo-frame {SHARE_LINK} \
              --interval {DISPLAY_INTERVAL} \
@@ -289,15 +290,12 @@ mod tests {
             "1.2.3",
         );
 
-        assert!(matches!(
-            result,
-            Err(FrameError::Login(PhotosApiError::InvalidApiResponse(_, 42)))
-        ));
+        assert!(result.is_err_and(|e| e.is::<LoginError>()));
     }
 
     #[test]
     fn when_login_fails_with_http_error_then_loop_terminates() {
-        let mut client_stub = MockClient::new();
+        let mut client_stub = MockHttpClient::new();
         client_stub.expect_post().returning(|_, _, _| {
             let mut error_response = MockHttpResponse::new();
             error_response
@@ -309,6 +307,11 @@ mod tests {
         const DISPLAY_INTERVAL: u64 = 30;
         MockClock::set_time(Duration::from_secs(DISPLAY_INTERVAL));
         let mut sdl_stub = MockSdl::new().with_default_expectations();
+        /* Hack: Break the loop eventually in case of assertion failure */
+        sdl_stub
+            .expect_handle_quit_event()
+            .times(..5000)
+            .returning(|| Ok(()));
         let cli_command = format!(
             "syno-photo-frame http://fake.dsm.addr/aa/sharing/FakeSharingId \
             --interval {DISPLAY_INTERVAL} \
@@ -323,23 +326,18 @@ mod tests {
             "1.2.3",
         );
 
-        assert!(matches!(
-            result,
-            Err(FrameError::Login(PhotosApiError::InvalidHttpResponse(
-                StatusCode::FORBIDDEN
-            )))
-        ));
+        assert!(result.is_err_and(|e| e.is::<LoginError>()));
     }
 
     #[test]
     fn when_getting_photo_fails_loop_continues() {
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
 
-        let mut client_stub = MockClient::new();
+        let mut client_stub = MockHttpClient::new();
         client_stub
             .expect_post()
             .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(dto::Login {})));
+            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         /* Simulate failing get_album_contents_count request */
         client_stub
             .expect_post()
@@ -360,8 +358,8 @@ mod tests {
             sdl_stub.expect_size().return_const((198, 102));
             sdl_stub
                 .expect_copy_texture_to_canvas()
-                .return_const(Ok(()));
-            sdl_stub.expect_fill_canvas().return_const(Ok(()));
+                .returning(|_| Ok(()));
+            sdl_stub.expect_fill_canvas().returning(|_| Ok(()));
             sdl_stub.expect_present_canvas().return_const(());
         }
         sdl_stub.expect_update_texture().return_once(|_, _| {
@@ -393,7 +391,7 @@ mod tests {
 
         /* If failed request bubbled up its error and broke the main slideshow loop, we would
          * observe it here as the error type would be different from Quit */
-        assert!(matches!(result, Err(FrameError::Quit(QuitEvent))));
+        assert!(result.is_err_and(|e| e.is::<QuitEvent>()));
     }
 
     pub fn fake_sleep(_: Duration) {}
@@ -403,11 +401,11 @@ mod tests {
     impl MockSdl {
         pub fn with_default_expectations(mut self) -> Self {
             self.expect_size().return_const((198, 102));
-            self.expect_update_texture().return_const(Ok(()));
-            self.expect_copy_texture_to_canvas().return_const(Ok(()));
-            self.expect_fill_canvas().return_const(Ok(()));
+            self.expect_update_texture().returning(|_, _| Ok(()));
+            self.expect_copy_texture_to_canvas().returning(|_| Ok(()));
+            self.expect_fill_canvas().returning(|_| Ok(()));
             self.expect_present_canvas().return_const(());
-            self.expect_handle_quit_event().return_const(Ok(()));
+            // self.expect_handle_quit_event().returning(|| Ok(()));
             self
         }
     }

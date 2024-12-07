@@ -1,15 +1,14 @@
-use std::fmt::{Display, Formatter};
-
 #[cfg(not(test))]
 use std::time::Instant;
 
 #[cfg(test)]
 use mock_instant::Instant;
 
+use anyhow::Result;
+
 use crate::{
     cli::Transition,
     sdl::{Color, Sdl, TextureIndex},
-    QuitEvent,
 };
 
 const TRANSITION_ALPHA_MIN: f64 = 0_f64;
@@ -18,14 +17,8 @@ const TRANSITION_ALPHA_MAX: f64 = 255_f64;
 const FADE_TO_BLACK_DURATION_SECS: f64 = 1_f64;
 const CROSSFADE_DURATION_SECS: f64 = 1_f64;
 
-#[derive(Debug)]
-pub enum TransitionError {
-    Sdl(String),
-    Quit(QuitEvent),
-}
-
 impl Transition {
-    pub fn play(&self, sdl: &mut impl Sdl) -> Result<(), TransitionError> {
+    pub fn play(&self, sdl: &mut impl Sdl) -> Result<()> {
         match self {
             Transition::Crossfade => {
                 self.crossfade(sdl)?;
@@ -42,7 +35,7 @@ impl Transition {
         Ok(())
     }
 
-    fn crossfade(&self, sdl: &mut impl Sdl) -> Result<(), TransitionError> {
+    fn crossfade(&self, sdl: &mut impl Sdl) -> Result<()> {
         let mut delta;
         let mut alpha = TRANSITION_ALPHA_MIN;
         let mut last = Instant::now();
@@ -61,11 +54,7 @@ impl Transition {
     }
 
     /// Returns false if exit event occurred
-    fn fade_to_black(
-        &self,
-        sdl: &mut impl Sdl,
-        phase: FadeToBlackPhase,
-    ) -> Result<(), TransitionError> {
+    fn fade_to_black(&self, sdl: &mut impl Sdl, phase: FadeToBlackPhase) -> Result<()> {
         let mut delta;
         let mut alpha = phase.init_alpha();
         let mut last = Instant::now();
@@ -119,27 +108,6 @@ impl FadeToBlackPhase {
     }
 }
 
-impl Display for TransitionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TransitionError::Sdl(error) => write!(f, "{error}"),
-            TransitionError::Quit(quit) => write!(f, "{quit}"),
-        }
-    }
-}
-
-impl From<String> for TransitionError {
-    fn from(value: String) -> Self {
-        TransitionError::Sdl(value)
-    }
-}
-
-impl From<QuitEvent> for TransitionError {
-    fn from(value: QuitEvent) -> Self {
-        TransitionError::Quit(value)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -159,7 +127,7 @@ mod tests {
 
         sdl.expect_handle_quit_event()
             .times(2 * EXPECTED_PHASE_ITERATIONS)
-            .return_const(Ok(()));
+            .returning(|| Ok(()));
         let mut sdl_seq = Sequence::default();
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
@@ -169,11 +137,11 @@ mod tests {
                     .withf(move |index| index == texture_index)
                     .once()
                     .in_sequence(&mut sdl_seq)
-                    .return_const(Ok(()));
+                    .return_once(|_| Ok(()));
                 sdl.expect_fill_canvas()
                     .once()
                     .in_sequence(&mut sdl_seq)
-                    .return_const(Ok(()));
+                    .return_once(|_| Ok(()));
                 sdl.expect_present_canvas()
                     .once()
                     .in_sequence(&mut sdl_seq)
@@ -198,7 +166,7 @@ mod tests {
         const EXPECTED_ITERATIONS: usize = 31;
         sdl.expect_handle_quit_event()
             .times(EXPECTED_ITERATIONS)
-            .return_const(Ok(()));
+            .returning(|| Ok(()));
         let mut sdl_seq = Sequence::default();
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
@@ -207,7 +175,7 @@ mod tests {
                 .withf(|index| index == &TextureIndex::Current)
                 .once()
                 .in_sequence(&mut sdl_seq)
-                .return_const(Ok(()));
+                .return_once(|_| Ok(()));
             sdl.expect_set_texture_alpha()
                 .once()
                 .in_sequence(&mut sdl_seq)
@@ -216,7 +184,7 @@ mod tests {
                 .withf(|index| index == &TextureIndex::Next)
                 .once()
                 .in_sequence(&mut sdl_seq)
-                .return_const(Ok(()));
+                .return_once(|_| Ok(()));
             sdl.expect_present_canvas()
                 .once()
                 .in_sequence(&mut sdl_seq)
@@ -240,10 +208,10 @@ mod tests {
 
         fn test_case(fps: f64) {
             let mut sdl = MockSdl::default();
-            sdl.expect_handle_quit_event().return_const(Ok(()));
+            sdl.expect_handle_quit_event().returning(|| Ok(()));
             let frame_duration = Duration::from_secs_f64(1_f64 / fps);
-            sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
-            sdl.expect_fill_canvas().return_const(Ok(()));
+            sdl.expect_copy_texture_to_canvas().returning(|_| Ok(()));
+            sdl.expect_fill_canvas().returning(|_| Ok(()));
             sdl.expect_present_canvas()
                 .returning(move || MockClock::advance(frame_duration));
             reset_clock();
@@ -262,9 +230,9 @@ mod tests {
 
         fn test_case(fps: f64) {
             let mut sdl = MockSdl::default();
-            sdl.expect_handle_quit_event().return_const(Ok(()));
+            sdl.expect_handle_quit_event().returning(|| Ok(()));
             let frame_duration = Duration::from_secs_f64(1_f64 / fps);
-            sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
+            sdl.expect_copy_texture_to_canvas().returning(|_| Ok(()));
             sdl.expect_set_texture_alpha().return_const(());
             sdl.expect_present_canvas()
                 .returning(move || MockClock::advance(frame_duration));
@@ -280,8 +248,8 @@ mod tests {
     #[test]
     fn fade_to_black_play_mutates_alpha() {
         let mut sdl = MockSdl::default();
-        sdl.expect_handle_quit_event().return_const(Ok(()));
-        sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
+        sdl.expect_handle_quit_event().returning(|| Ok(()));
+        sdl.expect_copy_texture_to_canvas().returning(|_| Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
         let mut sdl_seq = Sequence::default();
@@ -292,21 +260,21 @@ mod tests {
                 .withf(move |color| *color == Color::RGBA(0, 0, 0, alpha))
                 .once()
                 .in_sequence(&mut sdl_seq)
-                .return_const(Ok(()));
+                .return_once(|_| Ok(()));
         }
         /* Set up calls between first and last 3 iterations */
         const EXPECTED_ITERATIONS: usize = 32;
         let alpha_postfix = [34, 17, 0];
         sdl.expect_fill_canvas()
             .times(EXPECTED_ITERATIONS - alpha_prefix.len() - alpha_postfix.len())
-            .return_const(Ok(()));
+            .returning(|_| Ok(()));
         for alpha in alpha_postfix {
             /* Check alpha value for last 3 calls to fill_canvas. */
             sdl.expect_fill_canvas()
                 .withf(move |color| *color == Color::RGBA(0, 0, 0, alpha))
                 .once()
                 .in_sequence(&mut sdl_seq)
-                .return_const(Ok(()));
+                .return_once(|_| Ok(()));
         }
         sdl.expect_present_canvas()
             .returning(move || MockClock::advance(frame_duration));
@@ -319,8 +287,8 @@ mod tests {
     #[test]
     fn crossfade_play_mutates_alpha() {
         let mut sdl = MockSdl::default();
-        sdl.expect_handle_quit_event().return_const(Ok(()));
-        sdl.expect_copy_texture_to_canvas().return_const(Ok(()));
+        sdl.expect_handle_quit_event().returning(|| Ok(()));
+        sdl.expect_copy_texture_to_canvas().returning(|_| Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
         let mut sdl_seq = Sequence::default();

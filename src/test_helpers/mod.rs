@@ -1,15 +1,18 @@
+use anyhow::Result;
 use mockall::mock;
 use serde::de::DeserializeOwned;
-
-use crate::{
-    api_photos::dto,
-    http::{CookieStore, HttpClient, Jar, MockHttpResponse, StatusCode, Url},
+use syno_api::{
+    dto::ApiResponse,
+    foto::browse::item::dto::Item,
+    foto::browse::item::dto::{Additional, Thumbnail},
 };
 
-mock! {
-    pub Client {}
+use crate::http::{self, CookieStore, Jar, MockHttpResponse, StatusCode, Url};
 
-    impl HttpClient for Client {
+mock! {
+    pub HttpClient {}
+
+    impl http::HttpClient for HttpClient {
         type Response = MockHttpResponse;
 
         fn post<'a>(
@@ -17,13 +20,9 @@ mock! {
             url: &str,
             form: &[(&'a str, &'a str)],
             header: Option<(&'a str, &'a str)>,
-        ) -> Result<MockHttpResponse, String>;
+        ) -> Result<MockHttpResponse>;
 
-        fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<MockHttpResponse, String>;
-    }
-
-    impl Clone for Client {
-        fn clone(&self) -> Self;
+        fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<MockHttpResponse>;
     }
 }
 
@@ -46,26 +45,25 @@ pub fn new_success_response_with_json<T: DeserializeOwned + Send + 'static>(
     data: T,
 ) -> MockHttpResponse {
     let mut response = new_ok_response();
-    response
-        .expect_json::<dto::ApiResponse<T>>()
-        .return_once(|| {
-            Ok(dto::ApiResponse {
-                success: true,
-                error: None,
-                data: Some(data),
-            })
-        });
+    response.expect_json::<ApiResponse<T>>().return_once(|| {
+        Ok(ApiResponse {
+            success: true,
+            error: None,
+            data: Some(data),
+        })
+    });
     response
 }
 
-pub fn new_photo_dto(id: i32, cache_key: &str) -> dto::Photo {
-    dto::Photo {
+pub fn new_photo_dto(id: u32, cache_key: &str) -> Item {
+    Item {
         id,
-        additional: dto::Additional {
-            thumbnail: dto::Thumbnail {
+        additional: Some(Additional {
+            thumbnail: Some(Thumbnail {
                 cache_key: cache_key.to_string(),
-            },
-        },
+            }),
+        }),
+        ..Default::default()
     }
 }
 
@@ -81,7 +79,7 @@ pub fn is_login_form(form: &[(&str, &str)], sharing_id: &str) -> bool {
 
 pub fn is_get_count_form(form: &[(&str, &str)]) -> bool {
     form.eq(&[
-        ("api", "SYNO.Foto.Browse.Album"),
+        ("api", syno_api::foto::browse::album::API),
         ("method", "get"),
         ("version", "1"),
     ])

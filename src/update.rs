@@ -3,6 +3,7 @@ use std::{
     thread::{Scope, ScopedJoinHandle},
 };
 
+use anyhow::Result;
 use image::DynamicImage;
 
 use crate::{
@@ -20,7 +21,7 @@ pub struct UpdateNotification {
 }
 
 impl UpdateNotification {
-    pub fn new(screen_size: (u32, u32), rotation: Rotation) -> Result<Self, String> {
+    pub fn new(screen_size: (u32, u32), rotation: Rotation) -> Result<Self> {
         Ok(UpdateNotification {
             is_visible: false,
             icon: asset::update_icon(screen_size, rotation)?,
@@ -32,7 +33,7 @@ impl UpdateNotification {
         &self,
         current_image: &mut DynamicImage,
         sdl: &mut impl Sdl,
-    ) -> Result<(), String> {
+    ) -> Result<()> {
         self.overlay(current_image);
         sdl.update_texture(current_image.as_bytes(), TextureIndex::Current)?;
         sdl.copy_texture_to_canvas(TextureIndex::Current)?;

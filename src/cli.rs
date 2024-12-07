@@ -1,11 +1,13 @@
 //! CLI options
 
+pub use clap::Parser;
+
 use std::{path::PathBuf, time::Duration};
 
-pub use clap::Parser;
+use anyhow::{bail, Result};
 use clap::{builder::TypedValueParser as _, ValueEnum};
 
-use crate::{error::ErrorToString, http::Url};
+use crate::http::Url;
 
 /// Synology Photos album fullscreen slideshow
 ///
@@ -84,10 +86,10 @@ pub struct Cli {
     pub disable_update_check: bool,
 }
 
-fn try_parse_duration(arg: &str) -> Result<Duration, String> {
-    let seconds = arg.parse().map_err_to_string()?;
+fn try_parse_duration(arg: &str) -> Result<Duration> {
+    let seconds = arg.parse()?;
     if seconds < 5 {
-        Err("must not be less than 5".to_string())
+        bail!("must not be less than 5")
     } else {
         Ok(Duration::from_secs(seconds))
     }

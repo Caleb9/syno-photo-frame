@@ -1,5 +1,6 @@
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
+use anyhow::{anyhow, bail, Result};
 use log::LevelFilter;
 use rand::{self, seq::SliceRandom, Rng};
 use simple_logger::SimpleLogger;
@@ -7,38 +8,41 @@ use simple_logger::SimpleLogger;
 use syno_photo_frame::{
     self,
     cli::{Cli, Parser},
-    error::{ErrorToString, FrameError},
     http::ClientBuilder,
     logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
-    FrameResult, Random,
+    LoginError, QuitEvent, Random,
 };
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     SimpleLogger::new()
         .with_level(LevelFilter::Info) /* Default */
         .env() /* Allow overwriting default level with RUST_LOG env var */
         .init()?;
 
     match init_and_run() {
-        Err(FrameError::Login(error)) => {
+        Err(error) => {
+            if error.is::<QuitEvent>() {
+                return Ok(());
+            }
             log::error!("{error}");
-            Err(
-                "Login to Synology Photos failed. Make sure the share link is pointing to a \
-                *publicly shared album*. If the album's password link protection is \
-                enabled, use the --password option with a valid password.",
-            )?
+            match error.downcast_ref::<LoginError>() {
+                Some(LoginError(_)) => {
+                    bail!(
+                    "Login to Synology Photos failed. Make sure the share link is pointing to a \
+                     *publicly shared album*. If the album's password link protection is \
+                     enabled, use the --password option with a valid password.",
+                )
+                }
+                _ => bail!(error),
+            }
         }
-        Err(FrameError::Other(error)) => {
-            log::error!("{error}");
-            Err(error)?
-        }
-        Ok(()) | Err(FrameError::Quit(_)) => Ok(()),
+        _ => Ok(()),
     }
 }
 
 /// Setup "real" dependencies and run
-fn init_and_run() -> FrameResult<()> {
+fn init_and_run() -> Result<()> {
     let cli = Cli::parse();
 
     /* HTTP client */
@@ -46,8 +50,7 @@ fn init_and_run() -> FrameResult<()> {
     let http_client = ClientBuilder::new()
         .cookie_provider(Arc::clone(&cookie_store))
         .timeout(Duration::from_secs(cli.timeout_seconds as u64))
-        .build()
-        .map_err_to_string()?;
+        .build()?;
 
     /* SDL */
     let video = sdl::init_video()?;
@@ -58,7 +61,7 @@ fn init_and_run() -> FrameResult<()> {
         sdl::create_texture(&texture_creator, display_size)?,
         sdl::create_texture(&texture_creator, display_size)?,
     ];
-    let events = video.sdl().event_pump()?;
+    let events = video.sdl().event_pump().map_err(|s| anyhow!(s))?;
     let mut sdl = SdlWrapper::new(canvas, textures, events);
 
     /* Random */

@@ -1,15 +1,10 @@
-use std::{
-    error::Error,
-    fmt::{Display, Formatter},
-};
-
+use anyhow::{anyhow, bail, Result};
 use bytes::Bytes;
+use syno_api::foto::browse::item::dto::Item;
 
-use crate::api_client::ApiClient;
 use crate::{
-    api_photos::{dto::Album, PhotosApiError, SortBy},
+    api_client::{ApiClient, InvalidHttpResponse},
     cli::{Order, SourceSize},
-    error::ErrorToString,
     http::StatusCode,
     Random,
 };
@@ -51,9 +46,9 @@ impl<A: ApiClient> Slideshow<A> {
         self
     }
 
-    pub fn get_next_photo(&mut self, random: Random) -> Result<Bytes, SlideshowError> {
+    pub fn get_next_photo(&mut self, random: Random) -> Result<Bytes> {
         if !self.api_client.is_logged_in() {
-            self.api_client.login().map_err(SlideshowError::Login)?;
+            self.api_client.login().map_err(|e| anyhow!(e))?;
         }
         loop {
             if self.slideshow_ended() {
@@ -66,29 +61,29 @@ impl<A: ApiClient> Slideshow<A> {
                 .expect("photos should not be empty");
             let photo = self
                 .api_client
-                .get_album_contents(photo_index, 1.try_into().unwrap(), self.order.into())
-                .map_err_to_string()
-                .map_err(SlideshowError::Other)?
+                .get_album_contents(photo_index, 1.try_into().unwrap(), self.order.into())?
                 .pop();
 
-            if let Some(photo) = photo {
-                let photo_bytes_result = self.api_client.get_photo((
-                    photo.id,
-                    &photo.additional.thumbnail.cache_key,
-                    self.source_size,
-                ));
-                match photo_bytes_result {
-                    Ok(photo_bytes) => break Ok(photo_bytes),
-                    Err(PhotosApiError::InvalidHttpResponse(StatusCode::NOT_FOUND)) => {
-                        /* Photo has been removed since we fetched its metadata, try next one. */
-                        continue;
-                    }
-                    Err(error) => break Err(SlideshowError::Other(error.to_string())),
-                }
-            } else {
+            if photo.is_none() {
                 /* Photos were removed from the album since we fetched its item_count. Reinitialize */
                 self.photo_display_sequence.clear();
                 continue;
+            }
+            let Item { id, additional, .. } = photo.unwrap();
+            let photo_bytes_result = self.api_client.get_photo(
+                id,
+                &additional
+                    .expect("expected additional")
+                    .thumbnail
+                    .expect("expected thumbnail")
+                    .cache_key,
+                self.source_size,
+            );
+            match photo_bytes_result {
+                Err(error) if Self::photo_removed(&error) => {
+                    continue;
+                }
+                _ => break photo_bytes_result,
             }
         }
     }
@@ -97,98 +92,59 @@ impl<A: ApiClient> Slideshow<A> {
         self.photo_display_sequence.is_empty()
     }
 
-    fn initialize(&mut self, (rand_gen_range, rand_shuffle): Random) -> Result<(), String> {
+    fn initialize(&mut self, (rand_gen_range, rand_shuffle): Random) -> Result<()> {
         assert!(
             self.photo_display_sequence.is_empty(),
             "already initialized"
         );
-        let item_count = self.get_photos_count()?;
+        let item_count = self.api_client.get_album_contents_count()?;
         if item_count < 1 {
-            return Err("Album is empty".to_string());
+            bail!("Album is empty");
         }
         self.photo_display_sequence.reserve(item_count as usize);
         let photos_range = 0..item_count;
         match self.order {
-            Order::ByDate | Order::ByName => {
-                if self.random_start {
-                    self.photo_display_sequence.extend(
-                        photos_range
-                            .skip(rand_gen_range(0..item_count) as usize)
-                            .rev(),
-                    );
-                    /* RandomStart is only used when slideshow starts, and afterward continues in normal order */
-                    self.random_start = false;
-                } else {
-                    self.photo_display_sequence.extend(photos_range.rev());
-                }
+            Order::ByDate | Order::ByName if self.random_start => {
+                self.photo_display_sequence.extend(
+                    photos_range
+                        .skip(rand_gen_range(0..item_count) as usize)
+                        .rev(),
+                );
+                /* RandomStart is only used when slideshow starts, and afterward continues in normal
+                 * order */
+                self.random_start = false;
             }
+            Order::ByDate | Order::ByName => self.photo_display_sequence.extend(photos_range.rev()),
             Order::Random => {
                 self.photo_display_sequence.extend(photos_range);
                 rand_shuffle(&mut self.photo_display_sequence)
             }
         }
-
         Ok(())
     }
 
-    fn get_photos_count(&self) -> Result<u32, String> {
-        let album = self
-            .api_client
-            .get_album_contents_count()
-            .map_err_to_string()?
-            .pop();
-        if let Some(Album { item_count }) = album {
-            Ok(item_count)
-        } else {
-            Err("Album not found".to_string())
-        }
+    /// Photo has been removed since we fetched its metadata, try next one.
+    fn photo_removed(error: &anyhow::Error) -> bool {
+        matches!(
+            error.downcast_ref::<InvalidHttpResponse>(),
+            Some(InvalidHttpResponse(StatusCode::NOT_FOUND))
+        )
     }
 }
 
-#[derive(Debug)]
-pub enum SlideshowError {
-    Login(PhotosApiError),
-    Other(String),
-}
-
-impl From<Order> for SortBy {
-    fn from(value: Order) -> Self {
-        match value {
-            /* Random is not an option in the API. Randomization is implemented client-side and
-             * essentially makes the sort_by query parameter irrelevant. */
-            Order::ByDate | Order::Random => SortBy::TakenTime,
-            Order::ByName => SortBy::FileName,
-        }
-    }
-}
-
-impl Error for SlideshowError {}
-
-impl Display for SlideshowError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SlideshowError::Login(photos_api_error) => write!(f, "{photos_api_error}"),
-            SlideshowError::Other(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl From<String> for SlideshowError {
-    fn from(value: String) -> Self {
-        SlideshowError::Other(value)
-    }
-}
-
-/// These tests cover both `slideshow` and `api_photos` modules
+/// These tests cover both `slideshow` and `api_client::syno_client` modules
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api_client::SynoApiClient;
-    use crate::http::HttpClient;
+
+    use syno_api::{dto::List, foto::browse::album::dto::Album};
+
     use crate::{
-        api_photos::dto,
+        api_client::syno_client::Login,
+        api_client::syno_client::SynoApiClient,
+        http::HttpClient,
         http::{CookieStore, Jar, MockHttpResponse, Url},
-        test_helpers::{self, MockClient},
+        test_helpers::{self, MockHttpClient},
     };
 
     #[test]
@@ -197,13 +153,13 @@ mod tests {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
-        let mut client_mock = MockClient::new();
+        let mut client_mock = MockHttpClient::new();
         client_mock
             .expect_post()
             .withf(|url, form, _| {
                 url == EXPECTED_API_URL && test_helpers::is_login_form(form, "FakeSharingId")
             })
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(dto::Login {})));
+            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         const PHOTO_COUNT: u32 = 3;
         client_mock
             .expect_post()
@@ -213,14 +169,12 @@ mod tests {
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
-                    list: vec![Album {
-                        item_count: PHOTO_COUNT,
-                    }],
+                Ok(test_helpers::new_success_response_with_json(List {
+                    list: vec![album_with_item_count(PHOTO_COUNT)],
                 }))
             });
         const FIRST_PHOTO_INDEX: u32 = 0;
-        const FIRST_PHOTO_ID: i32 = 1;
+        const FIRST_PHOTO_ID: u32 = 1;
         const FIRST_PHOTO_CACHE_KEY: &str = "photo1";
         client_mock
             .expect_post()
@@ -230,7 +184,7 @@ mod tests {
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
+                Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![test_helpers::new_photo_dto(
                         FIRST_PHOTO_ID,
                         FIRST_PHOTO_CACHE_KEY,
@@ -280,30 +234,28 @@ mod tests {
     ) {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
-        let mut client_mock = MockClient::new();
+        let mut client_mock = MockHttpClient::new();
         client_mock
             .expect_post()
             .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(dto::Login {})));
+            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         const PHOTO_COUNT: u32 = 142;
         client_mock
             .expect_post()
             .withf(|_, form, _| test_helpers::is_get_count_form(form))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
-                    list: vec![dto::Album {
-                        item_count: PHOTO_COUNT,
-                    }],
+                Ok(test_helpers::new_success_response_with_json(List {
+                    list: vec![album_with_item_count(PHOTO_COUNT)],
                 }))
             });
         const FAKE_RANDOM_NUMBER: u32 = 42;
-        const RANDOM_PHOTO_ID: i32 = 43;
+        const RANDOM_PHOTO_ID: u32 = 43;
         const RANDOM_PHOTO_CACHE_KEY: &str = "photo43";
         client_mock
             .expect_post()
             .withf(|_, form, _| is_list_form(form, &FAKE_RANDOM_NUMBER.to_string(), "1"))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
+                Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![test_helpers::new_photo_dto(
                         RANDOM_PHOTO_ID,
                         RANDOM_PHOTO_CACHE_KEY,
@@ -357,29 +309,25 @@ mod tests {
         fn test_case(source_size: SourceSize, expected_size_param: &'static str) {
             /* Arrange */
             const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
-            let mut client_mock = MockClient::new();
+            let mut client_mock = MockHttpClient::new();
             client_mock
                 .expect_post()
                 .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-                .return_once(|_, _, _| {
-                    Ok(test_helpers::new_success_response_with_json(dto::Login {}))
-                });
+                .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
             const PHOTO_COUNT: u32 = 142;
             client_mock
                 .expect_post()
                 .withf(|_, form, _| test_helpers::is_get_count_form(form))
                 .return_once(|_, _, _| {
-                    Ok(test_helpers::new_success_response_with_json(dto::List {
-                        list: vec![dto::Album {
-                            item_count: PHOTO_COUNT,
-                        }],
+                    Ok(test_helpers::new_success_response_with_json(List {
+                        list: vec![album_with_item_count(PHOTO_COUNT)],
                     }))
                 });
             client_mock
                 .expect_post()
                 .withf(|_, form, _| is_list_form(form, "0", "1"))
                 .return_once(|_, _, _| {
-                    Ok(test_helpers::new_success_response_with_json(dto::List {
+                    Ok(test_helpers::new_success_response_with_json(List {
                         list: vec![test_helpers::new_photo_dto(43, "photo43")],
                     }))
                 });
@@ -414,9 +362,9 @@ mod tests {
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
         const NEXT_PHOTO_INDEX: u32 = 2;
-        const NEXT_PHOTO_ID: i32 = 3;
+        const NEXT_PHOTO_ID: u32 = 3;
         const NEXT_PHOTO_CACHE_KEY: &str = "photo3";
-        let mut client_mock = MockClient::new();
+        let mut client_mock = MockHttpClient::new();
         client_mock
             .expect_post()
             .withf(|url, form, header| {
@@ -425,7 +373,7 @@ mod tests {
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
+                Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![test_helpers::new_photo_dto(
                         NEXT_PHOTO_ID,
                         NEXT_PHOTO_CACHE_KEY,
@@ -471,14 +419,14 @@ mod tests {
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
         const NEXT_PHOTO_INDEX: u32 = 1;
         const NEXT_NEXT_PHOTO_INDEX: u32 = 2;
-        const NEXT_PHOTO_ID: i32 = 2;
+        const NEXT_PHOTO_ID: u32 = 2;
         const NEXT_PHOTO_CACHE_KEY: &str = "photo2";
-        let mut client_mock = MockClient::new();
+        let mut client_mock = MockHttpClient::new();
         client_mock
             .expect_post()
             .withf(|_, form, _| is_list_form(form, &NEXT_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
+                Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![test_helpers::new_photo_dto(
                         NEXT_PHOTO_ID,
                         NEXT_PHOTO_CACHE_KEY,
@@ -507,7 +455,7 @@ mod tests {
             .expect_post()
             .withf(|_, form, _| is_list_form(form, &NEXT_NEXT_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
+                Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![test_helpers::new_photo_dto(3, "photo3")],
                 }))
             });
@@ -547,20 +495,18 @@ mod tests {
     fn when_random_order_then_photo_display_sequence_is_shuffled() {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
-        let mut client_mock = MockClient::new();
+        let mut client_mock = MockHttpClient::new();
         client_mock
             .expect_post()
             .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(dto::Login {})));
+            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         const PHOTO_COUNT: u32 = 5;
         client_mock
             .expect_post()
             .withf(|_, form, _| test_helpers::is_get_count_form(form))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
-                    list: vec![dto::Album {
-                        item_count: PHOTO_COUNT,
-                    }],
+                Ok(test_helpers::new_success_response_with_json(List {
+                    list: vec![album_with_item_count(PHOTO_COUNT)],
                 }))
             });
         const FIRST_PHOTO_INDEX: u32 = 3;
@@ -568,7 +514,7 @@ mod tests {
             .expect_post()
             .withf(|_, form, _| is_list_form(form, &FIRST_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
+                Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![test_helpers::new_photo_dto(4, "photo4")],
                 }))
             });
@@ -612,13 +558,13 @@ mod tests {
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
         const NEXT_PHOTO_INDEX: u32 = 3;
-        let mut client_mock = MockClient::new();
+        let mut client_mock = MockHttpClient::new();
         client_mock
             .expect_post()
             .withf(|_, form, _| is_list_form(form, &NEXT_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
-                    list: Vec::<dto::Photo>::new(), // EMPTY
+                Ok(test_helpers::new_success_response_with_json(List {
+                    list: Vec::<Item>::new(), // EMPTY
                 }))
             });
         const NEW_PHOTO_COUNT: u32 = 3;
@@ -626,21 +572,19 @@ mod tests {
             .expect_post()
             .withf(|_, form, _| test_helpers::is_get_count_form(form))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
-                    list: vec![dto::Album {
-                        item_count: NEW_PHOTO_COUNT,
-                    }],
+                Ok(test_helpers::new_success_response_with_json(List {
+                    list: vec![album_with_item_count(NEW_PHOTO_COUNT)],
                 }))
             });
 
         const FIRST_PHOTO_INDEX: u32 = 0;
-        const FIRST_PHOTO_ID: i32 = 1;
+        const FIRST_PHOTO_ID: u32 = 1;
         const FIRST_PHOTO_CACHE_KEY: &str = "photo1";
         client_mock
             .expect_post()
             .withf(|_, form, _| is_list_form(form, &FIRST_PHOTO_INDEX.to_string(), "1"))
             .return_once(|_, _, _| {
-                Ok(test_helpers::new_success_response_with_json(dto::List {
+                Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![test_helpers::new_photo_dto(
                         FIRST_PHOTO_ID,
                         FIRST_PHOTO_CACHE_KEY,
@@ -691,6 +635,26 @@ mod tests {
         let share_link = Url::parse(share_link).unwrap();
         let api_client = SynoApiClient::build(http_client, cookie_store, &share_link).unwrap();
         Slideshow::new(api_client)
+    }
+
+    fn album_with_item_count(item_count: u32) -> Album {
+        Album {
+            id: u32::default(),
+            r#type: String::default(),
+            item_count,
+            name: String::default(),
+            owner_user_id: u32::default(),
+            passphrase: String::default(),
+            shared: bool::default(),
+            temporary_shared: Option::default(),
+            sort_by: String::default(),
+            sort_direction: String::default(),
+            create_time: u64::default(),
+            start_time: u64::default(),
+            end_time: u64::default(),
+            freeze_album: Option::default(),
+            version: u32::default(),
+        }
     }
 
     fn is_list_form(form: &[(&str, &str)], offset: &str, limit: &str) -> bool {

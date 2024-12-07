@@ -1,6 +1,8 @@
+use anyhow::{anyhow, bail, Result};
+
 use crate::http::{HttpClient, HttpResponse};
 
-pub fn get_latest_version(client: &impl HttpClient) -> Result<dto::Crate, String> {
+pub fn get_latest_version(client: &impl HttpClient) -> Result<dto::Crate> {
     let response = client.get("https://index.crates.io/sy/no/syno-photo-frame", &[])?;
     let status = response.status();
     if status.is_success() {
@@ -10,12 +12,9 @@ pub fn get_latest_version(client: &impl HttpClient) -> Result<dto::Crate, String
             .map(serde_json::from_str::<dto::Crate>)
             .filter_map(|r| r.ok())
             .rfind(|c| !c.yanked)
-            .ok_or("Unable to read creates.io response".to_string())
+            .ok_or(anyhow!("Unable to read creates.io response".to_string()))
     } else {
-        Err(status
-            .canonical_reason()
-            .unwrap_or(status.as_str())
-            .to_string())
+        bail!("{:?}", status.canonical_reason().unwrap_or(status.as_str()))
     }
 }
 
@@ -34,7 +33,7 @@ mod tests {
     use super::*;
     use crate::{
         http::{MockHttpResponse, StatusCode},
-        test_helpers::MockClient,
+        test_helpers::MockHttpClient,
     };
 
     #[test]
@@ -49,8 +48,8 @@ mod tests {
         response_mock.expect_status().return_const(StatusCode::OK);
         response_mock
             .expect_text()
-            .return_const(Ok(TEXT.to_string()));
-        let mut client_mock = MockClient::new();
+            .return_once(|| Ok(TEXT.to_string()));
+        let mut client_mock = MockHttpClient::new();
         client_mock
             .expect_get()
             .return_once(|_, _| Ok(response_mock));
