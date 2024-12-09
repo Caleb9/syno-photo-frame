@@ -2,12 +2,11 @@
 //!
 //! syno_photo_frame is a full-screen slideshow app for Synology Photos albums
 
-pub use api_client::LoginError;
+pub use {api_client::LoginError, rand::RandomImpl};
 
 use std::{
     error::Error,
     fmt::{Display, Formatter},
-    ops::Range,
     sync::mpsc::{self, Receiver, SyncSender},
     thread::{self, Scope, ScopedJoinHandle},
     time::Duration,
@@ -20,25 +19,28 @@ use {mock_instant::Instant, tests::fake_sleep as thread_sleep};
 
 use anyhow::Result;
 
+use crate::cli::Backend;
 use crate::{
-    api_client::syno_client::SynoApiClient,
+    api_client::{immich_client::ImmichApiClient, syno_client::SynoApiClient, ApiClient},
     cli::{Cli, Rotation},
     http::{CookieStore, HttpClient},
     img::{DynamicImage, Framed},
+    rand::Random,
     sdl::{Sdl, TextureIndex},
     slideshow::Slideshow,
     update::UpdateNotification,
 };
 
-mod api_client;
 pub mod cli;
 pub mod http;
 pub mod logging;
 pub mod sdl;
 
+mod api_client;
 mod api_crates;
 mod asset;
 mod img;
+mod rand;
 mod slideshow;
 mod transition;
 mod update;
@@ -46,41 +48,67 @@ mod update;
 #[cfg(test)]
 mod test_helpers;
 
-/// Functions for randomized slideshow ordering
-pub type Random = (fn(Range<u32>) -> u32, fn(&mut [u32]));
-
 #[derive(Clone, Debug)]
 pub struct QuitEvent;
 
 /// Slideshow loop
-pub fn run<C: HttpClient + Sync>(
+pub fn run<H, R>(
     cli: &Cli,
-    (client, cookie_store): (&C, &impl CookieStore),
+    (http_client, cookie_store): (&H, &impl CookieStore),
     sdl: &mut impl Sdl,
-    random: Random,
+    random: R,
     installed_version: &str,
-) -> Result<()> {
+) -> Result<()>
+where
+    H: HttpClient + Sync,
+    R: Random + Send,
+{
     let current_image = show_welcome_screen(cli, sdl)?;
 
     thread::scope::<'_, _, Result<()>>(|thread_scope| {
         let (update_check_sender, update_check_receiver) = mpsc::sync_channel(1);
         if !cli.disable_update_check {
             update::check_for_updates_thread(
-                client,
+                http_client,
                 installed_version,
                 thread_scope,
                 update_check_sender,
             );
         }
 
-        slideshow_loop(
-            cli,
-            (client, cookie_store),
-            sdl,
-            random,
-            update_check_receiver,
-            current_image,
-        )
+        let mut backend = cli.backend;
+        loop {
+            match backend {
+                Backend::Auto => {
+                    backend = api_client::detect_backend(&cli.share_link)?;
+                }
+                Backend::Synology => {
+                    let api_client =
+                        SynoApiClient::build(http_client, cookie_store, &cli.share_link)?
+                            .with_password(&cli.password);
+                    break slideshow_loop(
+                        cli,
+                        api_client,
+                        sdl,
+                        random,
+                        update_check_receiver,
+                        current_image,
+                    );
+                }
+                Backend::Immich => {
+                    let api_client = ImmichApiClient::build(http_client, &cli.share_link)?
+                        .with_password(&cli.password);
+                    break slideshow_loop(
+                        cli,
+                        api_client,
+                        sdl,
+                        random,
+                        update_check_receiver,
+                        current_image,
+                    );
+                }
+            }
+        }
     })
 }
 
@@ -104,14 +132,18 @@ fn show_welcome_screen(cli: &Cli, sdl: &mut impl Sdl) -> Result<DynamicImage> {
     Ok(welcome_img)
 }
 
-fn slideshow_loop<C: HttpClient + Sync>(
+fn slideshow_loop<A, R>(
     cli: &Cli,
-    http: (&C, &impl CookieStore),
+    api_client: A,
     sdl: &mut impl Sdl,
-    random: Random,
+    random: R,
     update_check_receiver: Receiver<bool>,
     mut current_image: DynamicImage,
-) -> Result<()> {
+) -> Result<()>
+where
+    A: ApiClient + Send,
+    R: Random + Send,
+{
     /* Load the first photo as soon as it's ready. */
     let mut last_change = Instant::now() - cli.photo_change_interval;
     let screen_size = sdl.size();
@@ -120,7 +152,14 @@ fn slideshow_loop<C: HttpClient + Sync>(
     const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
 
     thread::scope::<'_, _, Result<()>>(|thread_scope| {
-        photo_fetcher_thread(cli, http, screen_size, random, thread_scope, photo_sender)?;
+        photo_fetcher_thread(
+            cli,
+            api_client,
+            screen_size,
+            random,
+            thread_scope,
+            photo_sender,
+        )?;
 
         let loop_result = loop {
             sdl.handle_quit_event()?;
@@ -171,23 +210,28 @@ fn slideshow_loop<C: HttpClient + Sync>(
     })
 }
 
-fn photo_fetcher_thread<'a, C: HttpClient + Sync>(
+fn photo_fetcher_thread<'a, A, R>(
     cli: &'a Cli,
-    (http_client, cookie_store): (&'a C, &'a impl CookieStore),
+    api_client: A,
     screen_size: (u32, u32),
-    random: Random,
+    random: R,
     thread_scope: &'a Scope<'a, '_>,
     photo_sender: SyncSender<Result<DynamicImage>>,
-) -> Result<ScopedJoinHandle<'a, ()>> {
-    let api_client = SynoApiClient::build(http_client, cookie_store, &cli.share_link)?
-        .with_password(&cli.password);
-    let mut slideshow = Slideshow::new(api_client)
+) -> Result<ScopedJoinHandle<'a, ()>>
+where
+    A: ApiClient + Send + 'a,
+    R: Random + Send + 'a,
+{
+    if !api_client.is_logged_in() {
+        api_client.login()?;
+    }
+    let mut slideshow = Slideshow::new(api_client, random)
         .with_ordering(cli.order)
         .with_random_start(cli.random_start)
         .with_source_size(cli.source_size);
     Ok(thread_scope.spawn(move || loop {
         let photo_result = slideshow
-            .get_next_photo(random)
+            .get_next_photo()
             .and_then(|bytes| img::load_from_memory(&bytes))
             .map(|image| {
                 image.fit_to_screen_and_add_background(screen_size, cli.rotation, cli.background)
@@ -230,11 +274,13 @@ impl Error for QuitEvent {}
 
 #[cfg(test)]
 mod tests {
+    use bytes::Bytes;
     use mock_instant::MockClock;
 
-    use syno_api::dto::{ApiResponse, Error};
+    use syno_api::dto::{ApiResponse, Error, List};
 
     use super::*;
+    use crate::test_helpers::rand::FakeRandom;
     use crate::{
         api_client::syno_client::Login,
         cli::Parser,
@@ -286,7 +332,7 @@ mod tests {
             &Cli::parse_from(cli_command.split(' ')),
             (&client_stub, &Jar::default()),
             &mut sdl_stub,
-            DUMMY_RANDOM,
+            FakeRandom::default(),
             "1.2.3",
         );
 
@@ -322,7 +368,7 @@ mod tests {
             &Cli::parse_from(cli_command.split(' ')),
             (&client_stub, &Jar::default()),
             &mut sdl_stub,
-            DUMMY_RANDOM,
+            FakeRandom::default(),
             "1.2.3",
         );
 
@@ -341,13 +387,38 @@ mod tests {
         /* Simulate failing get_album_contents_count request */
         client_stub
             .expect_post()
-            .withf(|_, form, _| test_helpers::is_get_count_form(form))
+            .withf(|_, form, _| test_helpers::is_list_form(form))
             .returning(|_, _, _| {
+                Ok(test_helpers::new_success_response_with_json(List {
+                    list: vec![
+                        test_helpers::new_photo_dto(1, "missing_photo1"),
+                        test_helpers::new_photo_dto(2, "photo2"),
+                    ],
+                }))
+            });
+        client_stub
+            .expect_get()
+            .withf(|_, form| {
+                test_helpers::is_get_photo_form(form, "FakeSharingId", "1", "missing_photo1", "xl")
+            })
+            .return_once(|_, _| {
                 let mut error_response = MockHttpResponse::new();
                 error_response
                     .expect_status()
                     .return_const(StatusCode::NOT_FOUND);
                 Ok(error_response)
+            });
+        client_stub
+            .expect_get()
+            .withf(|_, form| {
+                test_helpers::is_get_photo_form(form, "FakeSharingId", "2", "photo2", "xl")
+            })
+            .return_once(|_, _| {
+                let mut get_photo_response = test_helpers::new_ok_response();
+                get_photo_response
+                    .expect_bytes()
+                    .return_once(|| Ok(Bytes::from_static(&[])));
+                Ok(get_photo_response)
             });
 
         /* Avoid overflow when setting initial last_change */
@@ -385,7 +456,7 @@ mod tests {
             &Cli::parse_from(cli_command.split(' ')),
             (&client_stub, &Jar::default()),
             &mut sdl_stub,
-            DUMMY_RANDOM,
+            FakeRandom::default(),
             "1.2.3",
         );
 
@@ -396,8 +467,6 @@ mod tests {
 
     pub fn fake_sleep(_: Duration) {}
 
-    const DUMMY_RANDOM: Random = (|_| 42, |_| ());
-
     impl MockSdl {
         pub fn with_default_expectations(mut self) -> Self {
             self.expect_size().return_const((198, 102));
@@ -405,7 +474,6 @@ mod tests {
             self.expect_copy_texture_to_canvas().returning(|_| Ok(()));
             self.expect_fill_canvas().returning(|_| Ok(()));
             self.expect_present_canvas().return_const(());
-            // self.expect_handle_quit_event().returning(|| Ok(()));
             self
         }
     }

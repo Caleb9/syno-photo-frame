@@ -26,6 +26,46 @@ mock! {
     }
 }
 
+pub mod rand {
+    use std::cell::RefCell;
+    use std::ops::Range;
+    use crate::rand::Random;
+
+    #[derive(Debug, Default)]
+    pub struct FakeRandom {
+        random_sequence: RefCell<Vec<u32>>,
+        shuffle_swap_sequence: Vec<(usize, usize)>,
+    }
+
+    impl FakeRandom {
+        pub fn with_random_sequence(self, sequence: Vec<u32>) -> Self {
+            self.random_sequence.replace(sequence);
+            self.random_sequence.borrow_mut().reverse();
+            self
+        }
+
+        pub fn with_shuffle_result(mut self, swaps: Vec<(usize, usize)>) -> Self {
+            self.shuffle_swap_sequence = swaps;
+            self
+        }
+    }
+
+    impl Random for FakeRandom {
+        fn gen_range(&self, _: Range<u32>) -> u32 {
+            self.random_sequence
+                .borrow_mut()
+                .pop()
+                .expect("should not be empty")
+        }
+
+        fn shuffle<T>(&self, slice: &mut [T]) {
+            self.shuffle_swap_sequence
+                .iter()
+                .for_each(|s| slice.swap(s.0, s.1));
+        }
+    }
+}
+
 /// When `is_logged_in_to_url` is set to Some value, cookie store will simulate logged in state
 pub fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> impl CookieStore {
     let cookie_store = Jar::default();
@@ -77,10 +117,34 @@ pub fn is_login_form(form: &[(&str, &str)], sharing_id: &str) -> bool {
     ])
 }
 
-pub fn is_get_count_form(form: &[(&str, &str)]) -> bool {
+pub fn is_list_form(form: &[(&str, &str)]) -> bool {
     form.eq(&[
-        ("api", syno_api::foto::browse::album::API),
-        ("method", "get"),
+        ("api", syno_api::foto::browse::item::API),
+        ("method", "list"),
         ("version", "1"),
+        ("additional", "[\"thumbnail\"]"),
+        ("offset", "0"),
+        ("limit", "5000"),
+        ("sort_by", "takentime"),
+        ("sort_direction", "asc"),
+    ])
+}
+
+pub fn is_get_photo_form(
+    form: &[(&str, &str)],
+    sharing_id: &str,
+    photo_id: &str,
+    cache_key: &str,
+    size: &str,
+) -> bool {
+    form.eq(&[
+        ("api", "SYNO.Foto.Thumbnail"),
+        ("method", "get"),
+        ("version", "2"),
+        ("_sharing_id", sharing_id),
+        ("id", photo_id),
+        ("cache_key", cache_key),
+        ("type", "unit"),
+        ("size", size),
     ])
 }

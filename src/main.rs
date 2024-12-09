@@ -2,17 +2,9 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::{anyhow, bail, Result};
 use log::LevelFilter;
-use rand::{self, seq::SliceRandom, Rng};
 use simple_logger::SimpleLogger;
 
-use syno_photo_frame::{
-    self,
-    cli::{Cli, Parser},
-    http::ClientBuilder,
-    logging::LoggingClientDecorator,
-    sdl::{self, SdlWrapper},
-    LoginError, QuitEvent, Random,
-};
+use syno_photo_frame::{self, cli::{Cli, Parser}, http::ClientBuilder, logging::LoggingClientDecorator, sdl::{self, SdlWrapper}, LoginError, QuitEvent, RandomImpl};
 
 fn main() -> Result<()> {
     SimpleLogger::new()
@@ -29,10 +21,10 @@ fn main() -> Result<()> {
             match error.downcast_ref::<LoginError>() {
                 Some(LoginError(_)) => {
                     bail!(
-                    "Login to Synology Photos failed. Make sure the share link is pointing to a \
-                     *publicly shared album*. If the album's password link protection is \
-                     enabled, use the --password option with a valid password.",
-                )
+                        "Login failed. Make sure the share link is pointing to a \
+                        *publicly shared album*. If the album's password link protection is \
+                        enabled, use the --password option with a valid password.",
+                    )
                 }
                 _ => bail!(error),
             }
@@ -64,12 +56,6 @@ fn init_and_run() -> Result<()> {
     let events = video.sdl().event_pump().map_err(|s| anyhow!(s))?;
     let mut sdl = SdlWrapper::new(canvas, textures, events);
 
-    /* Random */
-    let random: Random = (
-        |range| rand::thread_rng().gen_range(range),
-        |slice| slice.shuffle(&mut rand::thread_rng()),
-    );
-
     /* This crate version */
     let installed_version = env!("CARGO_PKG_VERSION");
 
@@ -80,7 +66,7 @@ fn init_and_run() -> Result<()> {
             cookie_store.as_ref(),
         ),
         &mut sdl,
-        random,
+        RandomImpl,
         installed_version,
     )
 }

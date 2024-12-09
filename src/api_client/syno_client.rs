@@ -1,22 +1,22 @@
-use std::fmt;
-use std::fmt::{Display, Formatter};
-use std::ops::Deref;
-use std::sync::OnceLock;
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+    sync::OnceLock,
+};
 
 use anyhow::{anyhow, bail, Result};
 use bytes::Bytes;
 use regex::Regex;
 use serde::Deserialize;
-use syno_api::{
-    dto::{ApiResponse, List},
-    foto::browse::album::dto::Album,
-    foto::browse::item::dto::Item,
+use syno_api::dto::{ApiResponse, List};
+
+use crate::{
+    cli::{Order, SourceSize},
+    http::{read_response, InvalidHttpResponse},
+    http::{CookieStore, HttpClient, HttpResponse, Url},
 };
 
-use crate::cli::{Order, SourceSize};
-use crate::http::{CookieStore, HttpClient, HttpResponse, Url};
-
-use super::{ApiClient, InvalidHttpResponse, LoginError};
+use super::{ApiClient, LoginError, SharingId};
 
 pub struct SynoApiClient<'a, H, C> {
     http_client: &'a H,
@@ -27,6 +27,8 @@ pub struct SynoApiClient<'a, H, C> {
 }
 
 impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
+    type Photo = syno_api::foto::browse::item::dto::Item;
+
     fn is_logged_in(&self) -> bool {
         self.cookie_store.cookies(&self.api_url).is_some()
     }
@@ -59,44 +61,14 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         }
     }
 
-    fn get_album_contents_count(&self) -> Result<u32> {
-        let params = [
-            ("api", syno_api::foto::browse::album::API),
-            ("method", "get"),
-            ("version", "1"),
-        ];
-        let response = self.http_client.post(
-            self.api_url.as_str(),
-            &params,
-            Some(("X-SYNO-SHARING", &self.sharing_id)),
-        )?;
-        read_response(response, |response| {
-            let dto = response.json::<ApiResponse<List<Album>>>()?;
-            if !dto.success {
-                bail!(InvalidApiResponse("get", dto.error.unwrap().code))
-            } else {
-                let album = dto
-                    .data
-                    .expect("data field should be populated for successful response")
-                    .list
-                    .pop();
-                if let Some(Album { item_count, .. }) = album {
-                    Ok(item_count)
-                } else {
-                    bail!("Album not found")
-                }
-            }
-        })
-    }
-
-    fn get_album_contents(&self, offset: u32, limit: Limit, sort_by: SortBy) -> Result<Vec<Item>> {
+    fn get_photo_metadata(&self, sort_by: SortBy) -> Result<Vec<Self::Photo>> {
         let params = [
             ("api", syno_api::foto::browse::item::API),
             ("method", "list"),
             ("version", "1"),
             ("additional", "[\"thumbnail\"]"),
-            ("offset", &offset.to_string()),
-            ("limit", &limit.to_string()),
+            ("offset", "0"),
+            ("limit", "5000"),
             ("sort_by", &sort_by.to_string()),
             ("sort_direction", "asc"),
         ];
@@ -106,7 +78,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
             Some(("X-SYNO-SHARING", &self.sharing_id)),
         )?;
         read_response(response, |response| {
-            let dto = response.json::<ApiResponse<List<Item>>>()?;
+            let dto = response.json::<ApiResponse<List<Self::Photo>>>()?;
             if !dto.success {
                 bail!(InvalidApiResponse("list", dto.error.unwrap().code))
             } else {
@@ -118,7 +90,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         })
     }
 
-    fn get_photo(&self, photo_id: u32, cache_key: &str, source_size: SourceSize) -> Result<Bytes> {
+    fn get_photo_bytes(&self, photo: &Self::Photo, source_size: SourceSize) -> Result<Bytes> {
         let size = match source_size {
             SourceSize::S => "sm",
             SourceSize::M => "m",
@@ -129,8 +101,18 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
             ("method", "get"),
             ("version", "2"),
             ("_sharing_id", &self.sharing_id),
-            ("id", &photo_id.to_string()),
-            ("cache_key", cache_key),
+            ("id", &photo.id.to_string()),
+            (
+                "cache_key",
+                &photo
+                    .additional
+                    .as_ref()
+                    .expect("expected additional")
+                    .thumbnail
+                    .as_ref()
+                    .expect("expected thumbnail")
+                    .cache_key,
+            ),
             ("type", "unit"),
             ("size", size),
         ];
@@ -143,20 +125,8 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         })
     }
 }
-fn read_response<R, S, T>(response: R, on_success: S) -> Result<T>
-where
-    R: HttpResponse,
-    S: FnOnce(R) -> Result<T>,
-{
-    let status = response.status();
-    if status.is_success() {
-        on_success(response)
-    } else {
-        bail!(InvalidHttpResponse(status))
-    }
-}
 
-impl<'a, H: HttpClient, C: CookieStore> SynoApiClient<'a, H, C> {
+impl<'a, H, C> SynoApiClient<'a, H, C> {
     pub fn build(http_client: &'a H, cookie_store: &'a C, share_link: &Url) -> Result<Self> {
         let (api_url, sharing_id) = parse_share_link(share_link)?;
         Ok(Self {
@@ -187,41 +157,6 @@ fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId)> {
 
 #[derive(Debug, Deserialize)]
 pub struct Login {/* Empty brackets are needed for the deserializer to work */}
-
-#[derive(Debug)]
-struct SharingId(pub String);
-
-impl Deref for SharingId {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-/// Synology Photos API accepts limit values between 0 and 5000
-#[derive(Clone, Copy, Debug)]
-pub struct Limit(u32);
-
-impl TryFrom<u32> for Limit {
-    type Error = &'static str;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        if value > 5000 {
-            Err("Limit only accepts values up to 5000")
-        } else {
-            Ok(Limit(value))
-        }
-    }
-}
-
-impl Deref for Limit {
-    type Target = u32;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 #[derive(Clone, Copy, Debug)]
 pub enum SortBy {
@@ -277,8 +212,8 @@ mod tests {
             "https://test.dsm.addr:5001/aa/sharing/webapi/entry.cgi",
         );
         test_case(
-            "https://test.dsm.addr/photo/aa/sharing/FakeSharingId",
-            "https://test.dsm.addr/photo/aa/sharing/webapi/entry.cgi",
+            "http://test.dsm.addr/photo/aa/sharing/FakeSharingId",
+            "http://test.dsm.addr/photo/aa/sharing/webapi/entry.cgi",
         );
 
         fn test_case(share_link: &str, expected_api_url: &str) {

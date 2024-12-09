@@ -9,13 +9,17 @@ use clap::{builder::TypedValueParser as _, ValueEnum};
 
 use crate::http::Url;
 
-/// Synology Photos album fullscreen slideshow
+/// Synology Photos or Immich album fullscreen slideshow
 ///
 /// Project website: <https://github.com/caleb9/syno-photo-frame>
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 pub struct Cli {
-    /// Link to a publicly shared album on Synology Photos
+    /// Backend service hosting a shared photo album
+    #[arg(long = "backend", value_enum, default_value_t = Backend::Auto)]
+    pub backend: Backend,
+
+    /// Link to a publicly shared album on Synology Photos or Immich
     ///
     /// Note that the album's privacy settings must be set to Public
     pub share_link: Url,
@@ -67,7 +71,7 @@ pub struct Cli {
 
     /// HTTP request timeout in seconds
     ///
-    /// Must be greater or equal to 5. When Synology Photos does not respond within the timeout, an
+    /// Must be greater or equal to 5. When server does not respond within the timeout, an
     /// error is displayed. Try to increase the value for slow connections
     #[arg(
         long = "timeout",
@@ -76,8 +80,8 @@ pub struct Cli {
     pub timeout_seconds: u16,
 
     /// Requested size of the photo as fetched from the Synology Photos. Can reduce network and CPU
-    /// utilization at the cost of image quality. Note that photos are still scaled to full-screen
-    /// size
+    /// utilization at the cost of image quality. Note: photos are still scaled to full-screen
+    /// size. Ignored when using Immich backend.
     #[arg(long, value_enum, default_value_t = SourceSize::L)]
     pub source_size: SourceSize,
 
@@ -93,6 +97,17 @@ fn try_parse_duration(arg: &str) -> Result<Duration> {
     } else {
         Ok(Duration::from_secs(seconds))
     }
+}
+
+/// Backend service hosting a shared photo album
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum Backend {
+    /// detect the backend type automatically
+    Auto,
+    /// Synology Photos
+    Synology,
+    /// Immich
+    Immich,
 }
 
 /// Slideshow ordering
