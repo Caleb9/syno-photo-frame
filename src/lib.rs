@@ -121,33 +121,24 @@ where
         cli.backend
     };
     match backend {
-        Backend::Synology => {
-            let api_client = SynoApiClient::build(http_client, cookie_store, &cli.share_link)?
-                .with_password(&cli.password);
-            slideshow_loop(
-                cli,
-                api_client,
-                sdl,
-                random,
-                update_check_receiver,
-                current_image,
-            )
-        }
-        Backend::Immich => {
-            let api_client =
-                ImmichApiClient::build(http_client, &cli.share_link)?.with_password(&cli.password);
-            slideshow_loop(
-                cli,
-                api_client,
-                sdl,
-                random,
-                update_check_receiver,
-                current_image,
-            )
-        }
-        Backend::Auto => {
-            unreachable!()
-        }
+        Backend::Synology => slideshow_loop(
+            cli,
+            SynoApiClient::build(http_client, cookie_store, &cli.share_link)?
+                .with_password(&cli.password),
+            sdl,
+            random,
+            update_check_receiver,
+            current_image,
+        ),
+        Backend::Immich => slideshow_loop(
+            cli,
+            ImmichApiClient::build(http_client, &cli.share_link)?.with_password(&cli.password),
+            sdl,
+            random,
+            update_check_receiver,
+            current_image,
+        ),
+        Backend::Auto => unreachable!(),
     }
 }
 
