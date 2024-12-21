@@ -27,9 +27,9 @@ mock! {
 }
 
 pub mod rand {
+    use crate::rand::Random;
     use std::cell::RefCell;
     use std::ops::Range;
-    use crate::rand::Random;
 
     #[derive(Debug, Default)]
     pub struct FakeRandom {

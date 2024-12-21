@@ -4,7 +4,14 @@ use anyhow::{anyhow, bail, Result};
 use log::LevelFilter;
 use simple_logger::SimpleLogger;
 
-use syno_photo_frame::{self, cli::{Cli, Parser}, http::ClientBuilder, logging::LoggingClientDecorator, sdl::{self, SdlWrapper}, LoginError, QuitEvent, RandomImpl};
+use syno_photo_frame::{
+    self,
+    cli::{Cli, Parser},
+    http::ClientBuilder,
+    logging::LoggingClientDecorator,
+    sdl::{self, SdlWrapper},
+    LoginError, QuitEvent, RandomImpl,
+};
 
 fn main() -> Result<()> {
     SimpleLogger::new()

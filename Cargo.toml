@@ -1,8 +1,8 @@
 [package]
 name = "syno-photo-frame"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2021"
-description = "Full-screen slideshow for Synology Photos albums"
+description = "Full-screen slideshow for Synology Photos and Immich albums"
 license = "GPL-3.0-or-later"
 authors = ["Piotr Karasinski"]
 readme = "README.md"
@@ -10,8 +10,8 @@ repository = "https://github.com/caleb9/syno-photo-frame"
 keywords = [
     "synology",
     "synology-photos",
+    "immich",
     "digital-photo-frame",
-    "slideshow",
     "raspberry-pi",
 ]
 rust-version = "1.74"

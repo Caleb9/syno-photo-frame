@@ -4,8 +4,8 @@
 Version](https://img.shields.io/crates/v/syno-photo-frame)](https://crates.io/crates/syno-photo-frame)
 
 [Synology
-Photos](https://www.synology.com/en-global/dsm/feature/photos)
-full-screen slideshow for Raspberry Pi.
+Photos](https://www.synology.com/en-global/dsm/feature/photos) and
+[Immich](https://immich.app/) full-screen slideshow for Raspberry Pi.
 
 <img src="doc/syno-photo-frame.png" width=600 />
 
@@ -22,6 +22,9 @@ __If you like the project, give it a star ⭐, or consider becoming a__
   - [Why?](#why)
   - [Setup](#setup)
     - [Synology Photos (NAS)](#synology-photos-nas)
+        - [Limitations](#limitations)
+    - [Alternative: Immich](#alternative-immich)
+        - [Limitations](#limitations-1)
     - [Raspberry Pi](#raspberry-pi)
       - [Option 1: Install From Debian Package](#option-1-install-from-debian-package)
       - [Option 2: Build From Source](#option-2-build-from-source)
@@ -75,11 +78,34 @@ Assuming the Synology Photos package is installed on DSM:
 
 <img src="doc/ShareLink.png" alt="Album Sharing" />
 
+##### Limitations
+
+* Accessing Synology Photos via a **Quick Connect** link is not
+  currently supported.
+* Upper limit on number of photos in an album is set to 5000.
+* [Video playback is not
+  supported](https://github.com/Caleb9/syno-photo-frame/issues/15)
+
+### Alternative: Immich
+
+Alternatively, instead of using Synology Photos, photos can also be
+hosted on Immich server. Create an __album__ in Immich, add photos to
+it, and create a share link (click the "Share" button in the
+album). Optionally set a password (the same recommendation as with
+Synology Photos about using HTTPS scheme when accessing the server
+over the internet applies). Copy/write down the link - you'll need it
+when setting up the app on Raspberry Pi later on.
+
+##### Limitations
+
+* Video playback is not supported
+
 ### Raspberry Pi
 
 Let's assume that you're starting with a fresh installation of
 Raspberry Pi OS Lite, the network has been set up (so you can access
-Synology Photos), and you can access the command line on your Pi.
+Synology Photos or Immich server), and you can access the command line
+on your Pi.
 
 #### Option 1: Install From Debian Package
 
@@ -176,7 +202,7 @@ syno-photo-frame --help
 Run the app:
 
 ```bash
-syno-photo-frame {sharing link to Synology Photos album}
+syno-photo-frame {sharing link to Synology Photos or Immich album}
 ```
 
 If everything works as expected, press Ctrl-C to kill the app.

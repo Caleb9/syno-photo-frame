@@ -11,12 +11,10 @@ use serde::Deserialize;
 use syno_api::dto::{ApiResponse, List};
 
 use crate::{
-    cli::{Order, SourceSize},
-    http::{read_response, InvalidHttpResponse},
-    http::{CookieStore, HttpClient, HttpResponse, Url},
+    api_client::{ApiClient, LoginError, SharingId, SortBy},
+    cli::SourceSize,
+    http::{read_response, CookieStore, HttpClient, HttpResponse, InvalidHttpResponse, Url},
 };
-
-use super::{ApiClient, LoginError, SharingId};
 
 pub struct SynoApiClient<'a, H, C> {
     http_client: &'a H,
@@ -68,7 +66,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
             ("version", "1"),
             ("additional", "[\"thumbnail\"]"),
             ("offset", "0"),
-            ("limit", "5000"),
+            ("limit", "5000"), // Limit imposed by API
             ("sort_by", &sort_by.to_string()),
             ("sort_direction", "asc"),
         ];
@@ -157,36 +155,6 @@ fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId)> {
 
 #[derive(Debug, Deserialize)]
 pub struct Login {/* Empty brackets are needed for the deserializer to work */}
-
-#[derive(Clone, Copy, Debug)]
-pub enum SortBy {
-    TakenTime,
-    FileName,
-}
-
-impl From<Order> for SortBy {
-    fn from(value: Order) -> Self {
-        match value {
-            /* Random is not an option in the API. Randomization is implemented client-side and
-             * essentially makes the sort_by query parameter irrelevant. */
-            Order::ByDate | Order::Random => SortBy::TakenTime,
-            Order::ByName => SortBy::FileName,
-        }
-    }
-}
-
-impl Display for SortBy {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                SortBy::FileName => "filename",
-                SortBy::TakenTime => "takentime",
-            }
-        )
-    }
-}
 
 #[derive(Debug)]
 pub struct InvalidApiResponse(&'static str, u16);

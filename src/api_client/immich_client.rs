@@ -7,8 +7,7 @@ use regex::Regex;
 use crate::{
     api_client::{
         immich_client::dto::{Album, AlbumInfo, Asset, AssetsInfo},
-        syno_client::SortBy,
-        ApiClient, SharingId,
+        ApiClient, SharingId, SortBy,
     },
     cli::SourceSize,
     http::{read_response, HttpClient, HttpResponse, Url},

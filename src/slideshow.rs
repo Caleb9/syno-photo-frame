@@ -59,7 +59,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
                 .expect("photos should not be empty");
             let photo_bytes_result = self.api_client.get_photo_bytes(&photo, self.source_size);
             match photo_bytes_result {
-                Err(error) if Self::photo_removed(&error) => {
+                Err(error) if photo_removed(&error) => {
                     continue;
                 }
                 _ => break photo_bytes_result,
@@ -104,14 +104,14 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
         }
         Ok(())
     }
+}
 
-    /// Photo has been removed since we fetched its metadata, try next one.
-    fn photo_removed(error: &anyhow::Error) -> bool {
-        matches!(
-            error.downcast_ref::<InvalidHttpResponse>(),
-            Some(InvalidHttpResponse(StatusCode::NOT_FOUND))
-        )
-    }
+/// Photo has been removed since we fetched its metadata, try next one.
+fn photo_removed(error: &anyhow::Error) -> bool {
+    matches!(
+        error.downcast_ref::<InvalidHttpResponse>(),
+        Some(InvalidHttpResponse(StatusCode::NOT_FOUND))
+    )
 }
 
 /// These tests cover both `slideshow` and `api_client::syno_client` modules
@@ -121,12 +121,10 @@ mod tests {
 
     use syno_api::dto::List;
 
-    use crate::test_helpers::rand::FakeRandom;
     use crate::{
-        api_client::syno_client::Login,
-        api_client::syno_client::SynoApiClient,
-        http::HttpClient,
-        http::{CookieStore, Jar, MockHttpResponse, Url},
+        api_client::{syno_client::Login, syno_client::SynoApiClient},
+        http::{CookieStore, HttpClient, Jar, MockHttpResponse, Url},
+        test_helpers::rand::FakeRandom,
         test_helpers::{self, MockHttpClient},
     };
 
@@ -181,7 +179,7 @@ mod tests {
                 Ok(get_photo_response)
             });
         let cookie_store = Jar::default();
-        let mut slideshow = new_slideshow(
+        let mut slideshow = new_syno_slideshow(
             &client_mock,
             FakeRandom::default(),
             &cookie_store,
@@ -253,8 +251,9 @@ mod tests {
 
         let random_mock = FakeRandom::default().with_random_sequence(vec![FAKE_RANDOM_NUMBER]);
         let cookie_store = Jar::default();
-        let mut slideshow = new_slideshow(&client_mock, random_mock, &cookie_store, SHARE_LINK)
-            .with_random_start(true);
+        let mut slideshow =
+            new_syno_slideshow(&client_mock, random_mock, &cookie_store, SHARE_LINK)
+                .with_random_start(true);
 
         /* Act */
         let result = slideshow.get_next_photo();
@@ -299,7 +298,7 @@ mod tests {
                     Ok(get_photo_response)
                 });
             let cookie_store = Jar::default();
-            let mut slideshow = new_slideshow(
+            let mut slideshow = new_syno_slideshow(
                 &client_mock,
                 FakeRandom::default(),
                 &cookie_store,
@@ -344,7 +343,7 @@ mod tests {
                 Ok(get_photo_response)
             });
         let cookie_store = logged_in_cookie_store(EXPECTED_API_URL);
-        let mut slideshow = new_slideshow(
+        let mut slideshow = new_syno_slideshow(
             &client_mock,
             FakeRandom::default(),
             &cookie_store,
@@ -417,7 +416,7 @@ mod tests {
         const NEXT_NEXT_PHOTO_ID: u32 = 3;
         const NEXT_NEXT_PHOTO_CACHE_KEY: &str = "photo3";
         let cookie_store = logged_in_cookie_store(EXPECTED_API_URL);
-        let mut slideshow = new_slideshow(
+        let mut slideshow = new_syno_slideshow(
             &client_mock,
             FakeRandom::default(),
             &cookie_store,
@@ -483,8 +482,9 @@ mod tests {
         ]);
 
         let cookie_store = Jar::default();
-        let mut slideshow = new_slideshow(&client_mock, random_mock, &cookie_store, SHARE_LINK)
-            .with_ordering(Order::Random);
+        let mut slideshow =
+            new_syno_slideshow(&client_mock, random_mock, &cookie_store, SHARE_LINK)
+                .with_ordering(Order::Random);
 
         /* Act */
         let result = slideshow.get_next_photo();
@@ -544,7 +544,7 @@ mod tests {
                 Ok(get_photo_response)
             });
         let cookie_store = logged_in_cookie_store(EXPECTED_API_URL);
-        let mut slideshow = new_slideshow(
+        let mut slideshow = new_syno_slideshow(
             &client_mock,
             FakeRandom::default(),
             &cookie_store,
@@ -566,7 +566,7 @@ mod tests {
         );
     }
 
-    fn new_slideshow<'a, H: HttpClient, C: CookieStore, R: Random>(
+    fn new_syno_slideshow<'a, H: HttpClient, C: CookieStore, R: Random>(
         http_client: &'a H,
         random: R,
         cookie_store: &'a C,

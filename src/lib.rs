@@ -19,10 +19,9 @@ use {mock_instant::Instant, tests::fake_sleep as thread_sleep};
 
 use anyhow::Result;
 
-use crate::cli::Backend;
 use crate::{
     api_client::{immich_client::ImmichApiClient, syno_client::SynoApiClient, ApiClient},
-    cli::{Cli, Rotation},
+    cli::{Backend, Cli, Rotation},
     http::{CookieStore, HttpClient},
     img::{DynamicImage, Framed},
     rand::Random,
@@ -47,9 +46,6 @@ mod update;
 
 #[cfg(test)]
 mod test_helpers;
-
-#[derive(Clone, Debug)]
-pub struct QuitEvent;
 
 /// Slideshow loop
 pub fn run<H, R>(
@@ -76,39 +72,14 @@ where
             );
         }
 
-        let mut backend = cli.backend;
-        loop {
-            match backend {
-                Backend::Auto => {
-                    backend = api_client::detect_backend(&cli.share_link)?;
-                }
-                Backend::Synology => {
-                    let api_client =
-                        SynoApiClient::build(http_client, cookie_store, &cli.share_link)?
-                            .with_password(&cli.password);
-                    break slideshow_loop(
-                        cli,
-                        api_client,
-                        sdl,
-                        random,
-                        update_check_receiver,
-                        current_image,
-                    );
-                }
-                Backend::Immich => {
-                    let api_client = ImmichApiClient::build(http_client, &cli.share_link)?
-                        .with_password(&cli.password);
-                    break slideshow_loop(
-                        cli,
-                        api_client,
-                        sdl,
-                        random,
-                        update_check_receiver,
-                        current_image,
-                    );
-                }
-            }
-        }
+        select_backend_and_start_slideshow(
+            cli,
+            (http_client, cookie_store),
+            sdl,
+            random,
+            update_check_receiver,
+            current_image,
+        )
     })
 }
 
@@ -130,6 +101,54 @@ fn show_welcome_screen(cli: &Cli, sdl: &mut impl Sdl) -> Result<DynamicImage> {
     sdl.copy_texture_to_canvas(TextureIndex::Current)?;
     sdl.present_canvas();
     Ok(welcome_img)
+}
+
+fn select_backend_and_start_slideshow<H, R>(
+    cli: &Cli,
+    (http_client, cookie_store): (&H, &impl CookieStore),
+    sdl: &mut impl Sdl,
+    random: R,
+    update_check_receiver: Receiver<bool>,
+    current_image: DynamicImage,
+) -> Result<()>
+where
+    H: HttpClient + Sync,
+    R: Random + Send,
+{
+    let backend = if matches!(cli.backend, Backend::Auto) {
+        api_client::detect_backend(&cli.share_link)?
+    } else {
+        cli.backend
+    };
+    match backend {
+        Backend::Synology => {
+            let api_client = SynoApiClient::build(http_client, cookie_store, &cli.share_link)?
+                .with_password(&cli.password);
+            slideshow_loop(
+                cli,
+                api_client,
+                sdl,
+                random,
+                update_check_receiver,
+                current_image,
+            )
+        }
+        Backend::Immich => {
+            let api_client =
+                ImmichApiClient::build(http_client, &cli.share_link)?.with_password(&cli.password);
+            slideshow_loop(
+                cli,
+                api_client,
+                sdl,
+                random,
+                update_check_receiver,
+                current_image,
+            )
+        }
+        Backend::Auto => {
+            unreachable!()
+        }
+    }
 }
 
 fn slideshow_loop<A, R>(
@@ -264,6 +283,9 @@ fn load_photo_or_error_screen(
     Ok(next_image)
 }
 
+#[derive(Clone, Debug)]
+pub struct QuitEvent;
+
 impl Display for QuitEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Quit")
@@ -280,13 +302,12 @@ mod tests {
     use syno_api::dto::{ApiResponse, Error, List};
 
     use super::*;
-    use crate::test_helpers::rand::FakeRandom;
     use crate::{
         api_client::syno_client::Login,
         cli::Parser,
         http::{Jar, MockHttpResponse, StatusCode},
         sdl::MockSdl,
-        test_helpers::MockHttpClient,
+        test_helpers::{rand::FakeRandom, MockHttpClient},
     };
 
     #[test]

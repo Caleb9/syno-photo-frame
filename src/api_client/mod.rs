@@ -1,10 +1,13 @@
-use crate::cli::Backend;
-use crate::{api_client::syno_client::SortBy, cli::SourceSize, http::Url};
+use std::{fmt, ops::Deref, sync::OnceLock};
+
 use anyhow::{bail, Result};
 use bytes::Bytes;
 use regex::Regex;
-use std::sync::OnceLock;
-use std::{fmt::Formatter, ops::Deref};
+
+use crate::{
+    cli::{Backend, Order, SourceSize},
+    http::Url,
+};
 
 pub mod immich_client;
 pub mod syno_client;
@@ -24,8 +27,8 @@ pub trait ApiClient {
 #[derive(Debug)]
 pub struct LoginError(pub anyhow::Error);
 
-impl std::fmt::Display for LoginError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LoginError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
@@ -40,6 +43,36 @@ impl Deref for SharingId {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum SortBy {
+    TakenTime,
+    FileName,
+}
+
+impl From<Order> for SortBy {
+    fn from(value: Order) -> Self {
+        match value {
+            /* Random is not an option in the API. Randomization is implemented client-side and
+             * essentially makes the sort_by query parameter irrelevant. */
+            Order::ByDate | Order::Random => SortBy::TakenTime,
+            Order::ByName => SortBy::FileName,
+        }
+    }
+}
+
+impl fmt::Display for SortBy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SortBy::FileName => "filename",
+                SortBy::TakenTime => "takentime",
+            }
+        )
     }
 }
 

@@ -33,7 +33,7 @@
 # for RPi Zero seems to be a native compilation, which is VERY slow.
 ##
 
-FROM rust:bookworm as build
+FROM rust:bookworm AS build
 
 RUN DEBIAN_FRONTEND=noninteractive apt update && \
     apt install -y libsdl2-dev libssl-dev lintian && \
@@ -53,8 +53,8 @@ RUN make
 # The following two stages can be used as --target options for `docker
 # build`, making it possible to extract the artifacts from Docker
 # images to the local file system.
-FROM scratch as dpkg
+FROM scratch AS dpkg
 COPY --from=build /workspace/dpkg/syno-photo-frame_*.deb ./
 
-FROM scratch as bin
+FROM scratch AS bin
 COPY --from=build /workspace/target/release/syno-photo-frame ./
