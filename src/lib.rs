@@ -337,7 +337,8 @@ mod tests {
         let cli_command = format!(
             "syno-photo-frame {SHARE_LINK} \
              --interval {DISPLAY_INTERVAL} \
-             --disable-update-check"
+             --disable-update-check \
+             --splash assets/test_loading.jpeg"
         );
 
         let result = run(
@@ -349,6 +350,7 @@ mod tests {
         );
 
         assert!(result.is_err_and(|e| e.is::<LoginError>()));
+        client_stub.checkpoint();
     }
 
     #[test]
@@ -373,7 +375,8 @@ mod tests {
         let cli_command = format!(
             "syno-photo-frame http://fake.dsm.addr/aa/sharing/FakeSharingId \
             --interval {DISPLAY_INTERVAL} \
-            --disable-update-check"
+            --disable-update-check \
+            --splash assets/test_loading.jpeg"
         );
 
         let result = run(
@@ -385,6 +388,7 @@ mod tests {
         );
 
         assert!(result.is_err_and(|e| e.is::<LoginError>()));
+        client_stub.checkpoint();
     }
 
     #[test]
@@ -461,7 +465,8 @@ mod tests {
         let cli_command = format!(
             "syno-photo-frame {SHARE_LINK} \
             --interval {DISPLAY_INTERVAL} \
-            --disable-update-check"
+            --disable-update-check \
+            --splash assets/test_loading.jpeg"
         );
 
         let result = run(
@@ -475,6 +480,7 @@ mod tests {
         /* If failed request bubbled up its error and broke the main slideshow loop, we would
          * observe it here as the error type would be different from Quit */
         assert!(result.is_err_and(|e| e.is::<QuitEvent>()));
+        client_stub.checkpoint();
     }
 
     pub fn fake_sleep(_: Duration) {}

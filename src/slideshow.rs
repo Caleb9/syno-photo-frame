@@ -13,7 +13,7 @@ use crate::{
 pub struct Slideshow<A: ApiClient, R> {
     api_client: A,
     random: R,
-    /// Indices of photos in an album in reverse order (so we can pop them off easily)
+    /// Album photos' metadata in reverse order (so we can pop them off easily)
     photo_display_sequence: Vec<A::Photo>,
     order: Order,
     random_start: bool,
@@ -122,25 +122,18 @@ mod tests {
     use syno_api::dto::List;
 
     use crate::{
-        api_client::{syno_client::Login, syno_client::SynoApiClient},
+        api_client::syno_client::SynoApiClient,
         http::{CookieStore, HttpClient, Jar, MockHttpResponse, Url},
         test_helpers::rand::FakeRandom,
         test_helpers::{self, MockHttpClient},
     };
 
     #[test]
-    fn when_default_order_then_get_next_photo_starts_by_sending_login_request_and_fetches_first_photo(
-    ) {
+    fn when_default_order_then_get_next_photo_fetches_first_photo() {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
         let mut client_mock = MockHttpClient::new();
-        client_mock
-            .expect_post()
-            .withf(|url, form, _| {
-                url == EXPECTED_API_URL && test_helpers::is_login_form(form, "FakeSharingId")
-            })
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         const FIRST_PHOTO_ID: u32 = 1;
         const FIRST_PHOTO_CACHE_KEY: &str = "photo1";
         client_mock
@@ -206,15 +199,10 @@ mod tests {
     }
 
     #[test]
-    fn when_random_start_then_get_next_photo_starts_by_sending_login_request_and_fetches_random_photo(
-    ) {
+    fn when_random_start_then_get_next_photo_fetches_random_photo() {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         let mut client_mock = MockHttpClient::new();
-        client_mock
-            .expect_post()
-            .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         const FAKE_RANDOM_NUMBER: u32 = 2;
         const RANDOM_PHOTO_ID: u32 = 43;
         const RANDOM_PHOTO_CACHE_KEY: &str = "photo43";
@@ -273,10 +261,6 @@ mod tests {
             /* Arrange */
             const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
             let mut client_mock = MockHttpClient::new();
-            client_mock
-                .expect_post()
-                .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-                .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
             client_mock
                 .expect_post()
                 .withf(|_, form, _| test_helpers::is_list_form(form))
@@ -447,10 +431,6 @@ mod tests {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         let mut client_mock = MockHttpClient::new();
-        client_mock
-            .expect_post()
-            .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         client_mock
             .expect_post()
             .withf(|_, form, _| test_helpers::is_list_form(form))
