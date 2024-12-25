@@ -102,6 +102,7 @@ pub fn new_photo_dto(id: u32, cache_key: &str) -> Item {
             thumbnail: Some(Thumbnail {
                 cache_key: cache_key.to_string(),
             }),
+            ..Default::default()
         }),
         ..Default::default()
     }
