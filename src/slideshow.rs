@@ -48,6 +48,8 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
     }
 
     pub fn get_next_photo(&mut self) -> Result<Bytes> {
+        /* Loop here prevents display of error screen when the photo has simply been removed from
+         * the album since we fetched its metadata. */
         loop {
             if self.slideshow_ended() {
                 self.initialize()?;
@@ -60,6 +62,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
             let photo_bytes_result = self.api_client.get_photo_bytes(&photo, self.source_size);
             match photo_bytes_result {
                 Err(error) if photo_removed(&error) => {
+                    log::warn!("{error}");
                     continue;
                 }
                 _ => break photo_bytes_result,

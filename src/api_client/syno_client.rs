@@ -116,8 +116,6 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         ];
         let response = self.http_client.get(self.api_url.as_str(), &params)?;
         read_response(response, |response| {
-            // TODO deal with a situation when the API returns a response with successful status code
-            // but the body contains JSON with an error instead of an image
             let bytes = response.bytes()?;
             Ok(bytes)
         })

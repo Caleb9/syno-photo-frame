@@ -17,11 +17,11 @@ use std::{thread::sleep as thread_sleep, time::Instant};
 #[cfg(test)]
 use {mock_instant::Instant, tests::fake_sleep as thread_sleep};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 use crate::{
     api_client::{immich_client::ImmichApiClient, syno_client::SynoApiClient, ApiClient},
-    cli::{Backend, Cli, Rotation},
+    cli::{Backend, Cli},
     http::{CookieStore, HttpClient},
     img::{DynamicImage, Framed},
     rand::Random,
@@ -188,18 +188,21 @@ where
             }
 
             if let Ok(next_photo_result) = photo_receiver.try_recv() {
-                let next_image = match next_photo_result {
+                let mut next_image = match next_photo_result {
+                    Ok(photo) => photo,
                     Err(error) if error.is::<LoginError>() => {
                         /* Login error terminates the main thread loop */
                         break Err(error);
                     }
-                    ok_or_other_error => load_photo_or_error_screen(
-                        ok_or_other_error,
-                        screen_size,
-                        cli.rotation,
-                        &update_notification,
-                    )?,
+                    Err(error) => {
+                        /* Any non-login error gets logged and an error screen is displayed. */
+                        log::error!("{error}");
+                        asset::error_screen(screen_size, cli.rotation)?
+                    }
                 };
+                if update_notification.is_visible {
+                    update_notification.overlay(&mut next_image);
+                }
                 sdl.update_texture(next_image.as_bytes(), TextureIndex::Next)?;
                 cli.transition.play(sdl)?;
 
@@ -242,7 +245,7 @@ where
     Ok(thread_scope.spawn(move || loop {
         let photo_result = slideshow
             .get_next_photo()
-            .and_then(|bytes| img::load_from_memory(&bytes))
+            .and_then(|bytes| load_image_from_memory(&bytes))
             .map(|image| {
                 image.fit_to_screen_and_add_background(screen_size, cli.rotation, cli.background)
             });
@@ -254,24 +257,21 @@ where
     }))
 }
 
-fn load_photo_or_error_screen(
-    next_photo_result: Result<DynamicImage>,
-    screen_size: (u32, u32),
-    rotation: Rotation,
-    update_notification: &UpdateNotification,
+fn load_image_from_memory(
+    bytes: &[u8],
 ) -> Result<DynamicImage> {
-    let mut next_image = match next_photo_result {
-        Ok(photo) => photo,
-        Err(error) => {
-            /* Any non-login error gets logged and an error screen is displayed. */
-            log::error!("{error}");
-            asset::error_screen(screen_size, rotation)?
-        }
-    };
-    if update_notification.is_visible {
-        update_notification.overlay(&mut next_image);
-    }
-    Ok(next_image)
+    img::load_from_memory(bytes)
+        /* Synology Photos API may respond with a http OK code and a JSON containing an
+         * error instead of image bytes in the response body. Log such responses for
+         * debugging. */
+        .or_else(|e| {
+            let is_json = serde_json::from_slice::<serde::de::IgnoredAny>(bytes).is_ok();
+            if !is_json {
+                return Err(e);
+            }
+            let json = String::from_utf8_lossy(bytes);
+            bail!("Failed to decode image bytes. Received the following data: {json}");
+        })
 }
 
 #[derive(Clone, Debug)]
@@ -289,7 +289,6 @@ impl Error for QuitEvent {}
 mod tests {
     use bytes::Bytes;
     use mock_instant::MockClock;
-
     use syno_api::dto::{ApiResponse, Error, List};
 
     use super::*;
@@ -392,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn when_getting_photo_fails_loop_continues() {
+    fn when_getting_photo_fails_with_http_error_loop_continues() {
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
 
         let mut client_stub = MockHttpClient::new();
@@ -400,7 +399,6 @@ mod tests {
             .expect_post()
             .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
             .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
-        /* Simulate failing get_album_contents_count request */
         client_stub
             .expect_post()
             .withf(|_, form, _| test_helpers::is_list_form(form))
@@ -412,12 +410,13 @@ mod tests {
                     ],
                 }))
             });
+        /* Simulate failing GET photo bytes request */
         client_stub
             .expect_get()
             .withf(|_, form| {
                 test_helpers::is_get_photo_form(form, "FakeSharingId", "1", "missing_photo1", "xl")
             })
-            .return_once(|_, _| {
+            .returning(|_, _| {
                 let mut error_response = MockHttpResponse::new();
                 error_response
                     .expect_status()
@@ -429,7 +428,7 @@ mod tests {
             .withf(|_, form| {
                 test_helpers::is_get_photo_form(form, "FakeSharingId", "2", "photo2", "xl")
             })
-            .return_once(|_, _| {
+            .returning(|_, _| {
                 let mut get_photo_response = test_helpers::new_ok_response();
                 get_photo_response
                     .expect_bytes()
@@ -448,13 +447,13 @@ mod tests {
                 .returning(|_| Ok(()));
             sdl_stub.expect_fill_canvas().returning(|_| Ok(()));
             sdl_stub.expect_present_canvas().return_const(());
+            sdl_stub.expect_update_texture().returning(|_, _| Ok(()));
         }
-        sdl_stub.expect_update_texture().return_once(|_, _| {
+        sdl_stub.expect_swap_textures().returning(|| {
             MockClock::advance(Duration::from_secs(1));
-            Ok(())
         });
         sdl_stub.expect_handle_quit_event().returning(|| {
-            /* Until update_texture is called (with an error image) and advances the time, return
+            /* Until swap_textures is called (with an error image) and advances the time, return
              * Ok. Afterward, break the loop with a simulated Quit event to finish the test */
             if MockClock::time() <= Duration::from_secs(DISPLAY_INTERVAL) {
                 Ok(())
@@ -466,9 +465,106 @@ mod tests {
             "syno-photo-frame {SHARE_LINK} \
             --interval {DISPLAY_INTERVAL} \
             --disable-update-check \
+            --transition none \
             --splash assets/test_loading.jpeg"
         );
 
+        // let _ = SimpleLogger::new().init(); /* cargo test -- --show-output */
+        let result = run(
+            &Cli::parse_from(cli_command.split(' ')),
+            (&client_stub, &Jar::default()),
+            &mut sdl_stub,
+            FakeRandom::default(),
+            "1.2.3",
+        );
+
+        /* If failed request bubbled up its error and broke the main slideshow loop, we would
+         * observe it here as the error type would be different from Quit */
+        assert!(result.is_err_and(|e| e.is::<QuitEvent>()));
+        client_stub.checkpoint();
+    }
+
+    #[test]
+    fn when_getting_photo_fails_with_api_error_loop_continues() {
+        const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
+
+        let mut client_stub = MockHttpClient::new();
+        client_stub
+            .expect_post()
+            .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
+            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
+        client_stub
+            .expect_post()
+            .withf(|_, form, _| test_helpers::is_list_form(form))
+            .returning(|_, _, _| {
+                Ok(test_helpers::new_success_response_with_json(List {
+                    list: vec![
+                        test_helpers::new_photo_dto(1, "bad_photo1"),
+                        test_helpers::new_photo_dto(2, "photo2"),
+                    ],
+                }))
+            });
+        /* Simulate failing GET photo bytes request */
+        client_stub
+            .expect_get()
+            .withf(|_, form| {
+                test_helpers::is_get_photo_form(form, "FakeSharingId", "1", "bad_photo1", "xl")
+            })
+            .returning(|_, _| {
+                let mut error_response = MockHttpResponse::new();
+                error_response.expect_status().return_const(StatusCode::OK);
+                error_response
+                    .expect_bytes()
+                    .return_once(|| Ok(Bytes::from("{ \"bad\": \"data\" }")));
+                Ok(error_response)
+            });
+        client_stub
+            .expect_get()
+            .withf(|_, form| {
+                test_helpers::is_get_photo_form(form, "FakeSharingId", "2", "photo2", "xl")
+            })
+            .returning(|_, _| {
+                let mut get_photo_response = test_helpers::new_ok_response();
+                get_photo_response
+                    .expect_bytes()
+                    .return_once(|| Ok(Bytes::from_static(&[])));
+                Ok(get_photo_response)
+            });
+
+        /* Avoid overflow when setting initial last_change */
+        const DISPLAY_INTERVAL: u64 = 30;
+        MockClock::set_time(Duration::from_secs(DISPLAY_INTERVAL));
+        let mut sdl_stub = MockSdl::new();
+        {
+            sdl_stub.expect_size().return_const((198, 102));
+            sdl_stub
+                .expect_copy_texture_to_canvas()
+                .returning(|_| Ok(()));
+            sdl_stub.expect_fill_canvas().returning(|_| Ok(()));
+            sdl_stub.expect_present_canvas().return_const(());
+            sdl_stub.expect_update_texture().returning(|_, _| Ok(()));
+        }
+        sdl_stub.expect_swap_textures().returning(|| {
+            MockClock::advance(Duration::from_secs(1));
+        });
+        sdl_stub.expect_handle_quit_event().returning(|| {
+            /* Until swap_textures is called (with an error image) and advances the time, return
+             * Ok. Afterward, break the loop with a simulated Quit event to finish the test */
+            if MockClock::time() <= Duration::from_secs(DISPLAY_INTERVAL) {
+                Ok(())
+            } else {
+                Err(QuitEvent)
+            }
+        });
+        let cli_command = format!(
+            "syno-photo-frame {SHARE_LINK} \
+            --interval {DISPLAY_INTERVAL} \
+            --disable-update-check \
+            --transition none \
+            --splash assets/test_loading.jpeg"
+        );
+
+        // let _ = SimpleLogger::new().init(); /* cargo test -- --show-output */
         let result = run(
             &Cli::parse_from(cli_command.split(' ')),
             (&client_stub, &Jar::default()),
