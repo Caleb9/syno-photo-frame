@@ -20,6 +20,7 @@ pub struct SynoApiClient<'a, H, C> {
     http_client: &'a H,
     cookie_store: &'a C,
     api_url: Url,
+    api_thumbnail_get_url: Url,
     sharing_id: SharingId,
     password: &'a Option<String>,
 }
@@ -63,7 +64,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         let params = [
             ("api", syno_api::foto::browse::item::API),
             ("method", "list"),
-            ("version", "1"),
+            ("version", "4"),
             ("additional", "[\"thumbnail\"]"),
             ("offset", "0"),
             ("limit", "5000"), // Limit imposed by API
@@ -94,27 +95,23 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
             SourceSize::M => "m",
             SourceSize::L => "xl",
         };
+        let thumbnail = photo
+            .additional
+            .as_ref()
+            .expect("expected additional")
+            .thumbnail
+            .as_ref()
+            .expect("expected thumbnail");
         let params = [
-            ("api", "SYNO.Foto.Thumbnail"),
-            ("method", "get"),
-            ("version", "2"),
-            ("_sharing_id", &self.sharing_id),
-            ("id", &photo.id.to_string()),
-            (
-                "cache_key",
-                &photo
-                    .additional
-                    .as_ref()
-                    .expect("expected additional")
-                    .thumbnail
-                    .as_ref()
-                    .expect("expected thumbnail")
-                    .cache_key,
-            ),
             ("type", "unit"),
+            ("id", &thumbnail.unit_id.to_string()),
+            ("cache_key", &thumbnail.cache_key),
+            ("_sharing_id", &self.sharing_id),
             ("size", size),
         ];
-        let response = self.http_client.get(self.api_url.as_str(), &params)?;
+        let response = self
+            .http_client
+            .get(self.api_thumbnail_get_url.as_str(), &params)?;
         read_response(response, |response| {
             let bytes = response.bytes()?;
             Ok(bytes)
@@ -124,11 +121,12 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
 
 impl<'a, H, C> SynoApiClient<'a, H, C> {
     pub fn build(http_client: &'a H, cookie_store: &'a C, share_link: &Url) -> Result<Self> {
-        let (api_url, sharing_id) = parse_share_link(share_link)?;
+        let (api_url, api_thumbnail_get_url, sharing_id) = parse_share_link(share_link)?;
         Ok(Self {
             http_client,
             cookie_store,
             api_url,
+            api_thumbnail_get_url,
             sharing_id,
             password: &None,
         })
@@ -141,14 +139,24 @@ impl<'a, H, C> SynoApiClient<'a, H, C> {
 }
 
 /// Returns Synology Photos API URL and sharing id extracted from album share link
-fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId)> {
+fn parse_share_link(share_link: &Url) -> Result<(Url, Url, SharingId)> {
     static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r"^(https?://.+)/([^/]+)/?$").unwrap());
+    let re = RE
+        .get_or_init(|| Regex::new(r"^(https?://.+)/([[:alpha:]]{2}/sharing)/([^/]+)/?$").unwrap());
     let Some(captures) = re.captures(share_link.as_str()) else {
         bail!("Invalid share link: {}", share_link)
     };
-    let api_url = Url::parse(&format!("{}/webapi/entry.cgi", &captures[1]))?;
-    Ok((api_url, SharingId(captures[2].to_owned())))
+    let api_url = Url::parse(&format!(
+        "{}/{}/webapi/entry.cgi",
+        &captures[1], &captures[2]
+    ))?;
+    let api_thumbnail_get_url =
+        Url::parse(&format!("{}/synofoto/api/v2/p/Thumbnail/get", &captures[1]))?;
+    Ok((
+        api_url,
+        api_thumbnail_get_url,
+        SharingId(captures[3].to_owned()),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,20 +184,30 @@ mod tests {
         test_case(
             "https://test.dsm.addr:5001/aa/sharing/FakeSharingId",
             "https://test.dsm.addr:5001/aa/sharing/webapi/entry.cgi",
+            "https://test.dsm.addr:5001/synofoto/api/v2/p/Thumbnail/get",
         );
         test_case(
             "http://test.dsm.addr/photo/aa/sharing/FakeSharingId",
             "http://test.dsm.addr/photo/aa/sharing/webapi/entry.cgi",
+            "http://test.dsm.addr/photo/synofoto/api/v2/p/Thumbnail/get",
         );
 
-        fn test_case(share_link: &str, expected_api_url: &str) {
+        fn test_case(
+            share_link: &str,
+            expected_api_url: &str,
+            expected_api_thumbnail_get_url: &str,
+        ) {
             let link = Url::parse(share_link).unwrap();
 
             let result = parse_share_link(&link);
 
             assert!(result.is_ok());
-            let (api_url, sharing_id) = result.unwrap();
+            let (api_url, api_thumbnail_get_url, sharing_id) = result.unwrap();
             assert_eq!(api_url.as_str(), expected_api_url);
+            assert_eq!(
+                api_thumbnail_get_url.as_str(),
+                expected_api_thumbnail_get_url
+            );
             assert_eq!(sharing_id.0, "FakeSharingId");
         }
     }

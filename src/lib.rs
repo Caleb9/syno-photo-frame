@@ -15,7 +15,7 @@ use std::{
 #[cfg(not(test))]
 use std::{thread::sleep as thread_sleep, time::Instant};
 #[cfg(test)]
-use {mock_instant::Instant, tests::fake_sleep as thread_sleep};
+use {mock_instant::Instant, test_helpers::fake_sleep as thread_sleep};
 
 use anyhow::{bail, Result};
 
@@ -257,9 +257,7 @@ where
     }))
 }
 
-fn load_image_from_memory(
-    bytes: &[u8],
-) -> Result<DynamicImage> {
+fn load_image_from_memory(bytes: &[u8]) -> Result<DynamicImage> {
     img::load_from_memory(bytes)
         /* Synology Photos API may respond with a http OK code and a JSON containing an
          * error instead of image bytes in the response body. Log such responses for
@@ -578,8 +576,6 @@ mod tests {
         assert!(result.is_err_and(|e| e.is::<QuitEvent>()));
         client_stub.checkpoint();
     }
-
-    pub fn fake_sleep(_: Duration) {}
 
     impl MockSdl {
         pub fn with_default_expectations(mut self) -> Self {

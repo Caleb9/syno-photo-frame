@@ -1,3 +1,10 @@
+use std::time::Duration;
+
+#[cfg(test)]
+use crate::test_helpers::fake_sleep as thread_sleep;
+#[cfg(not(test))]
+use std::thread::sleep as thread_sleep;
+
 use anyhow::{bail, Result};
 use bytes::Bytes;
 
@@ -48,6 +55,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
     }
 
     pub fn get_next_photo(&mut self) -> Result<Bytes> {
+        const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
         /* Loop here prevents display of error screen when the photo has simply been removed from
          * the album since we fetched its metadata. */
         loop {
@@ -63,6 +71,8 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
             match photo_bytes_result {
                 Err(error) if photo_removed(&error) => {
                     log::warn!("{error}");
+                    /* Save on CPU and request flooding */
+                    thread_sleep(LOOP_SLEEP_DURATION);
                     continue;
                 }
                 _ => break photo_bytes_result,
@@ -136,6 +146,8 @@ mod tests {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
+        const EXPECTED_THUMBNAIL_API_URL: &str =
+            "http://fake.dsm.addr/synofoto/api/v2/p/Thumbnail/get";
         let mut client_mock = MockHttpClient::new();
         const FIRST_PHOTO_ID: u32 = 1;
         const FIRST_PHOTO_CACHE_KEY: &str = "photo1";
@@ -158,11 +170,11 @@ mod tests {
         client_mock
             .expect_get()
             .withf(|url, query| {
-                url == EXPECTED_API_URL
-                    && is_get_photo_query(
+                url == EXPECTED_THUMBNAIL_API_URL
+                    && test_helpers::is_get_photo_form(
                         query,
-                        &FIRST_PHOTO_ID.to_string(),
                         "FakeSharingId",
+                        &FIRST_PHOTO_ID.to_string(),
                         FIRST_PHOTO_CACHE_KEY,
                         "xl",
                     )
@@ -224,10 +236,10 @@ mod tests {
         client_mock
             .expect_get()
             .withf(|_, query| {
-                is_get_photo_query(
+                test_helpers::is_get_photo_form(
                     query,
-                    &RANDOM_PHOTO_ID.to_string(),
                     "FakeSharingId",
+                    &RANDOM_PHOTO_ID.to_string(),
                     RANDOM_PHOTO_CACHE_KEY,
                     "xl",
                 )
@@ -275,7 +287,13 @@ mod tests {
             client_mock
                 .expect_get()
                 .withf(move |_, query| {
-                    is_get_photo_query(query, "43", "FakeSharingId", "photo43", expected_size_param)
+                    test_helpers::is_get_photo_form(
+                        query,
+                        "FakeSharingId",
+                        "43",
+                        "photo43",
+                        expected_size_param,
+                    )
                 })
                 .return_once(|_, _| {
                     let mut get_photo_response = test_helpers::new_ok_response();
@@ -313,11 +331,11 @@ mod tests {
         client_mock
             .expect_get()
             .withf(|url, query| {
-                url == "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi"
-                    && is_get_photo_query(
+                url == "http://fake.dsm.addr/synofoto/api/v2/p/Thumbnail/get"
+                    && test_helpers::is_get_photo_form(
                         query,
-                        &NEXT_PHOTO_ID.to_string(),
                         "FakeSharingId",
+                        &NEXT_PHOTO_ID.to_string(),
                         NEXT_PHOTO_CACHE_KEY,
                         "xl",
                     )
@@ -364,10 +382,10 @@ mod tests {
         client_mock
             .expect_get()
             .withf(|_, query| {
-                is_get_photo_query(
+                test_helpers::is_get_photo_form(
                     query,
-                    &MISSING_PHOTO_ID.to_string(),
                     "FakeSharingId",
+                    &MISSING_PHOTO_ID.to_string(),
                     MISSING_PHOTO_CACHE_KEY,
                     "xl",
                 )
@@ -384,10 +402,10 @@ mod tests {
         client_mock
             .expect_get()
             .withf(|_, query| {
-                is_get_photo_query(
+                test_helpers::is_get_photo_form(
                     query,
-                    &NEXT_PHOTO_ID.to_string(),
                     "FakeSharingId",
+                    &NEXT_PHOTO_ID.to_string(),
                     NEXT_PHOTO_CACHE_KEY,
                     "xl",
                 )
@@ -450,7 +468,9 @@ mod tests {
             });
         client_mock
             .expect_get()
-            .withf(|_, query| is_get_photo_query(query, "1", "FakeSharingId", "photo1", "xl"))
+            .withf(|_, query| {
+                test_helpers::is_get_photo_form(query, "FakeSharingId", "1", "photo1", "xl")
+            })
             .return_once(|_, _| {
                 let mut get_photo_response = test_helpers::new_ok_response();
                 get_photo_response
@@ -511,10 +531,10 @@ mod tests {
         client_mock
             .expect_get()
             .withf(|_, query| {
-                is_get_photo_query(
+                test_helpers::is_get_photo_form(
                     query,
-                    &FIRST_PHOTO_ID.to_string(),
                     "FakeSharingId",
+                    &FIRST_PHOTO_ID.to_string(),
                     FIRST_PHOTO_CACHE_KEY,
                     "xl",
                 )
@@ -558,25 +578,6 @@ mod tests {
         let share_link = Url::parse(share_link).unwrap();
         let api_client = SynoApiClient::build(http_client, cookie_store, &share_link).unwrap();
         Slideshow::new(api_client, random)
-    }
-
-    fn is_get_photo_query(
-        query: &[(&str, &str)],
-        id: &str,
-        sharing_id: &str,
-        cache_key: &str,
-        size: &str,
-    ) -> bool {
-        query.eq(&[
-            ("api", "SYNO.Foto.Thumbnail"),
-            ("method", "get"),
-            ("version", "2"),
-            ("_sharing_id", sharing_id),
-            ("id", id),
-            ("cache_key", cache_key),
-            ("type", "unit"),
-            ("size", size),
-        ])
     }
 
     fn logged_in_cookie_store(url: &str) -> impl CookieStore {

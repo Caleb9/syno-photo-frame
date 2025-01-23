@@ -1,6 +1,7 @@
 use anyhow::Result;
 use mockall::mock;
 use serde::de::DeserializeOwned;
+use std::time::Duration;
 use syno_api::{
     dto::ApiResponse,
     foto::browse::item::dto::Item,
@@ -66,6 +67,8 @@ pub mod rand {
     }
 }
 
+pub fn fake_sleep(_: Duration) {}
+
 /// When `is_logged_in_to_url` is set to Some value, cookie store will simulate logged in state
 pub fn new_cookie_store(is_logged_in_to_url: Option<&str>) -> impl CookieStore {
     let cookie_store = Jar::default();
@@ -101,6 +104,7 @@ pub fn new_photo_dto(id: u32, cache_key: &str) -> Item {
         additional: Some(Additional {
             thumbnail: Some(Thumbnail {
                 cache_key: cache_key.to_string(),
+                unit_id: id,
             }),
             ..Default::default()
         }),
@@ -122,7 +126,7 @@ pub fn is_list_form(form: &[(&str, &str)]) -> bool {
     form.eq(&[
         ("api", syno_api::foto::browse::item::API),
         ("method", "list"),
-        ("version", "1"),
+        ("version", "4"),
         ("additional", "[\"thumbnail\"]"),
         ("offset", "0"),
         ("limit", "5000"),
@@ -139,13 +143,10 @@ pub fn is_get_photo_form(
     size: &str,
 ) -> bool {
     form.eq(&[
-        ("api", "SYNO.Foto.Thumbnail"),
-        ("method", "get"),
-        ("version", "2"),
-        ("_sharing_id", sharing_id),
+        ("type", "unit"),
         ("id", photo_id),
         ("cache_key", cache_key),
-        ("type", "unit"),
+        ("_sharing_id", sharing_id),
         ("size", size),
     ])
 }

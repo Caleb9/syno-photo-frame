@@ -48,8 +48,8 @@ I developed this app for a DIY digital photo frame project using a
 from my Synology NAS over LAN.
 
 Why not use Synology Photos in a web browser directly? There are two
-reasons. First, the current version of Synology Photos (1.6.x at the
-time of writing) does not allow slideshow speed adjustments and
+reasons. First, the current version of Synology Photos web app (1.7.x
+at the time of writing) does not allow slideshow speed adjustments and
 changes photos every 3 or 4 seconds - way too fast for a photo
 frame. Second, running a full web browser is more resource-demanding
 than a simple static image app, which matters when using a Raspberry
@@ -244,8 +244,8 @@ article](https://www.dexterindustries.com/howto/run-a-program-on-your-raspberry-
 
 A proper digital photo frame doesn't run 24/7. Shutdown can be
 scheduled in software only, but for startup, you'll need a hardware
-solution, e.g. for Raspberry Pi Zero, I'm using [Witty Pi 3
-Mini](https://www.adafruit.com/product/5038).
+solution, e.g. for Raspberry Pi Zero, I'm using [Witty Pi 4
+Mini](https://www.uugear.com/product/witty-pi-4-mini/).
 
 ### Auto Brightness
 
@@ -281,7 +281,3 @@ valid values.
 You can replace the default image displayed during loading of the
 first photo. Use the `--splash` option to point the app to a .jpeg
 file location.
-
-## Supported By
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg" width=100 />](https://jb.gg/OpenSourceSupport)
