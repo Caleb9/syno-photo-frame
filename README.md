@@ -38,7 +38,6 @@ __If you like the project, give it a star ⭐, or consider becoming a__
     - [Start from a Random Photo and in Random Order](#start-from-a-random-photo-and-in-random-order)
     - [Change the Transition Effect](#change-the-transition-effect)
     - [Customize the Splash-Screen](#customize-the-splash-screen)
-  - [Supported By](#supported-by)
 
 ## Why?
 
