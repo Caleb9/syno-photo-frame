@@ -52,7 +52,7 @@ pub mod rand {
     }
 
     impl Random for FakeRandom {
-        fn gen_range(&self, _: Range<u32>) -> u32 {
+        fn random_range(&self, _: Range<u32>) -> u32 {
             self.random_sequence
                 .borrow_mut()
                 .pop()

@@ -100,7 +100,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
                 self.photo_display_sequence.extend(
                     photos
                         .into_iter()
-                        .skip(self.random.gen_range(0..item_count as u32) as usize)
+                        .skip(self.random.random_range(0..item_count as u32) as usize)
                         .rev(),
                 );
                 /* RandomStart is only used when slideshow starts, and afterward continues in normal
