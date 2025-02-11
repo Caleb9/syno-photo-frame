@@ -2,3 +2,7 @@
 .vscode/launch.json
 *~
 .idea/
+Cargo.lock
+SDL2.dll
+SDL2.lib
+TODO.md
