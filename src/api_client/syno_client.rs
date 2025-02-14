@@ -38,7 +38,14 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
             ("method", "login"),
             ("version", "1"),
             ("sharing_id", &self.sharing_id),
-            ("password", self.password.as_deref().unwrap_or_default()),
+            (
+                "password",
+                if let Some(password) = self.password {
+                    &format!("\"{password}\"")
+                } else {
+                    ""
+                },
+            ),
         ];
         let response = self
             .http_client
