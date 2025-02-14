@@ -71,12 +71,13 @@ impl Sdl for SdlWrapper<'_> {
     }
 
     fn handle_quit_event(&mut self) -> Result<(), QuitEvent> {
-        let exit_requested = self.events.poll_iter().any(|e| match e {
-            event @ (Event::Quit { .. } | Event::AppTerminating { .. }) => {
+        let exit_requested = self.events.poll_iter().any(|e| {
+            if let event @ (Event::Quit { .. } | Event::AppTerminating { .. }) = e {
                 log::debug!("SDL event received: {event:?}");
                 true
+            } else {
+                false
             }
-            _ => false,
         });
         if exit_requested {
             Err(QuitEvent)

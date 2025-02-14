@@ -84,18 +84,17 @@ where
 }
 
 fn show_welcome_screen(cli: &Cli, sdl: &mut impl Sdl) -> Result<DynamicImage> {
-    let welcome_img = match &cli.splash {
-        None => asset::welcome_screen(sdl.size(), cli.rotation)?,
-        Some(path) => {
-            let (w, h) = sdl.size();
-            match img::open(path) {
-                Ok(image) => image.resize_exact(w, h, image::imageops::FilterType::Nearest),
-                Err(error) => {
-                    log::error!("Splashscreen {}: {error}", path.to_string_lossy());
-                    asset::welcome_screen(sdl.size(), cli.rotation)?
-                }
+    let welcome_img = if let Some(path) = &cli.splash {
+        let (w, h) = sdl.size();
+        match img::open(path) {
+            Ok(image) => image.resize_exact(w, h, image::imageops::FilterType::Nearest),
+            Err(error) => {
+                log::error!("Splashscreen {}: {error}", path.to_string_lossy());
+                asset::welcome_screen(sdl.size(), cli.rotation)?
             }
         }
+    } else {
+        asset::welcome_screen(sdl.size(), cli.rotation)?
     };
     sdl.update_texture(welcome_img.as_bytes(), TextureIndex::Current)?;
     sdl.copy_texture_to_canvas(TextureIndex::Current)?;

@@ -19,25 +19,21 @@ fn main() -> Result<()> {
         .env() /* Allow overwriting default level with RUST_LOG env var */
         .init()?;
 
-    match init_and_run() {
-        Err(error) => {
-            if error.is::<QuitEvent>() {
-                return Ok(());
-            }
-            log::error!("{error}");
-            match error.downcast_ref::<LoginError>() {
-                Some(LoginError(_)) => {
-                    bail!(
-                        "Login failed. Make sure the share link is pointing to a \
-                        *publicly shared album*. If the album's password link protection is \
-                        enabled, use the --password option with a valid password.",
-                    )
-                }
-                _ => bail!(error),
-            }
+    if let Err(error) = init_and_run() {
+        if error.is::<QuitEvent>() {
+            return Ok(());
         }
-        _ => Ok(()),
+        log::error!("{error}");
+        if let Some(LoginError(_)) = error.downcast_ref::<LoginError>() {
+            bail!(
+                "Login failed. Make sure the share link is pointing to a *publicly shared album*. \
+                If the album's password link protection is enabled, use the --password option with \
+                a valid password.",
+            )
+        }
+        bail!(error)
     }
+    Ok(())
 }
 
 /// Setup "real" dependencies and run
