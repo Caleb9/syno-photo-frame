@@ -5,11 +5,11 @@ use std::{
 
 use bytes::Bytes;
 use ftp::FtpStream;
+use url_parse::url::Url;
+use url_parse::core::Parser;
 
 use crate::{
     cli::{Order, SourceSize},
-    // error::ErrorToString,
-    http::Url,
     Random,
 };
 
@@ -21,11 +21,11 @@ pub enum SortBy {
 
 use lazy_regex::*;
 
-
 /// Holds the slideshow state and queries API to fetch photos.
 #[derive(Debug)]
 pub struct Slideshow<'a> {
-    ftp_server: &'a Url,
+    server: Url,
+    folder: String,
     user: &'a Option<String>,
     password: &'a Option<String>,
     /// Indices of photos in an album in reverse order (so we can pop them off easily)
@@ -41,9 +41,11 @@ pub enum SlideshowError {
 }
 
 impl<'a> Slideshow<'a> {
-    pub fn build(ftp_server: &'a Url, user: &'a Option<String>) -> Result<Slideshow<'a>, String> {
+    pub fn build(server: &'a String, folder: &'a String, user: &'a Option<String>) -> Result<Slideshow<'a>, String> {
+        let server_url = Parser::new(None).parse(server).unwrap();
         Ok(Slideshow {
-            ftp_server,
+            server: server_url,
+            folder: folder.clone(),
             user,
             password: &None,
             photo_display_sequence: vec![],
@@ -77,13 +79,13 @@ impl<'a> Slideshow<'a> {
         // Filter for jpegs
         let pattern = regex!(r#"^.+\.(?i:jpg|jpeg)"#);
         // Create a connection to FTP server
-        let ftp_connect = self.ftp_server.host_str().unwrap();
+        let ftp_connect = self.server.host_str().unwrap();
         let mut ftp_stream = FtpStream::connect(format!("{}:21", ftp_connect)).unwrap();
         let _ = ftp_stream.login(self.user.clone().unwrap().as_str(), self.password.clone().unwrap().as_str()).unwrap();
 
         
         // Change into a new directory, relative to the one we are currently in.
-        let _ = ftp_stream.cwd(self.ftp_server.path()).unwrap();
+        let _ = ftp_stream.cwd(&self.folder).unwrap();
 
         // Fetch list of Photos
         let mut photos = ftp_stream.nlst(None).unwrap();
@@ -98,13 +100,13 @@ impl<'a> Slideshow<'a> {
         // Filter for jpegs
         let pattern = regex!(r#"^.+\.(?i:jpg|jpeg)"#);
         // Create a connection to an FTP server and authenticate to it.
-        let ftp_connect = self.ftp_server.host_str().unwrap();
+        let ftp_connect = self.server.host_str().unwrap();
         let mut ftp_stream = FtpStream::connect(format!("{}:21", ftp_connect)).unwrap();
         let _ = ftp_stream.login(self.user.clone().unwrap().as_str(), self.password.clone().unwrap().as_str()).unwrap();
 
         
         // Change into a new directory, relative to the one we are currently in.
-        let _ = ftp_stream.cwd(self.ftp_server.path()).unwrap();
+        let _ = ftp_stream.cwd(&self.folder).unwrap();
 
         // Fetch list of Photos
         let mut photos = ftp_stream.nlst(None).unwrap();

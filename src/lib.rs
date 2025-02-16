@@ -20,7 +20,6 @@ use crate::{
 
 pub mod cli;
 pub mod error;
-pub mod http;
 pub mod logging;
 pub mod sdl;
 
@@ -192,7 +191,7 @@ fn photo_fetcher_thread<'a>(
 }
 
 fn new_slideshow(cli: &Cli) -> Result<Slideshow, String> {
-    Ok(Slideshow::build(&cli.ftp_server, &cli.user)?
+    Ok(Slideshow::build(&cli.server, &cli.folder, &cli.user)?
         .with_password(&cli.password)
         .with_ordering(cli.order)
         .with_random_start(cli.random_start)

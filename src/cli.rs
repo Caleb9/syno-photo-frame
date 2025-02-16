@@ -5,7 +5,7 @@ use std::{path::PathBuf, time::Duration};
 pub use clap::Parser;
 use clap::{builder::TypedValueParser as _, ValueEnum};
 
-use crate::{error::ErrorToString, http::Url};
+use crate::error::ErrorToString;
 
 /// Synology Photos album fullscreen slideshow
 ///
@@ -13,11 +13,14 @@ use crate::{error::ErrorToString, http::Url};
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 pub struct Cli {
-    /// Link to a publicly shared album on Synology Photos
-    ///
-    /// Note that the album's privacy settings must be set to Public
-    pub ftp_server: Url,
+    /// IP address of the FTP server
+    #[arg(long)]
+    pub server: String,
     
+    /// Folder path on the FTP server
+    #[arg(long)]
+    pub folder: String,
+
     /// User for smb access
     #[arg(short = 'u', long = "user")]
     pub user: Option<String>,
@@ -58,6 +61,10 @@ pub struct Cli {
             clap::builder::PossibleValuesParser::new(ROTATIONS).map(Rotation::from)
     )]
     pub rotation: Rotation,
+    
+    /// Use motion sensor to sleep when no motion is detected
+    #[arg(long, default_value_t = false)]
+    pub motionsensor: bool,
 
     /// Path to a JPEG file to display during startup, replacing the default splash-screen
     #[arg(long)]
