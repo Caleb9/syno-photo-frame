@@ -1,180 +1,54 @@
-# Syno Photo Frame
+# FTP Photo Frame
 
-[Synology
-Photos](https://www.synology.com/en-global/dsm/feature/photos)
-full-screen slideshow for Raspberry Pi.
-
-<img src="doc/syno-photo-frame.png" width=600 />
+FTP-connected Full-screen slideshow for Raspberry Pi based on [Syno-Photo-Frame](https://github.com/Caleb9/syno-photo-frame).
 
 Features include speed control, transition effects, and a blurry
 background fill.
 
-<img src="doc/Slideshow.png" width=600 alt="Extra space gets blurry background" />
+__This is a heavily stripped-down version of a much better tested and more connected Project: [Syno-Photo-Frame](https://github.com/Caleb9/syno-photo-frame)</br>
+Consider that instead, if you utilize one of it's integrations.__
 
-__If you like the project, give it a star ⭐, or consider becoming a__
-[![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/caleb9)
-:)
-
-- [Syno Photo Frame](#syno-photo-frame)
-  - [Why?](#why)
-  - [Setup](#setup)
-    - [Synology Photos (NAS)](#synology-photos-nas)
-    - [Raspberry Pi](#raspberry-pi)
-      - [Option 1: Install From Debian Package](#option-1-install-from-debian-package)
-      - [Option 2: Build From Source](#option-2-build-from-source)
-        - [Alternative: Build With Docker](#alternative-build-with-docker)
-  - [Run](#run)
-  - [Optional Stuff](#optional-stuff)
-    - [Increase the Swap Size on Raspberry Pi Zero](#increase-the-swap-size-on-raspberry-pi-zero)
-    - [Auto-start](#auto-start)
-    - [Startup-Shutdown Schedule](#startup-shutdown-schedule)
-    - [Auto Brightness](#auto-brightness)
-    - [Start from a Random Photo and in Random Order](#start-from-a-random-photo-and-in-random-order)
-    - [Change the Transition Effect](#change-the-transition-effect)
-    - [Customize the Splash-Screen](#customize-the-splash-screen)
-  - [Supported By](#supported-by)
+- [Why?](#why)
+- [Setup](#setup)
+    - [Build with Docker](#build-with-docker)
+    - [Connect Motionsensor](#connect-motionsensor)
+- [Run](#run)
+- [Optional Stuff](#optional-stuff)
+  - [Increase the Swap Size on Raspberry Pi Zero](#increase-the-swap-size-on-raspberry-pi-zero)
+  - [Auto-start](#auto-start)
+  - [Startup-Shutdown Schedule](#startup-shutdown-schedule)
+  - [Auto Brightness](#auto-brightness)
+  - [Start from a Random Photo and in Random Order](#start-from-a-random-photo-and-in-random-order)
+  - [Change the Transition Effect](#change-the-transition-effect)
+  - [Customize the Splash-Screen](#customize-the-splash-screen)
 
 ## Why?
 
-I developed this app for a DIY digital photo frame project using a
-[Raspberry Pi](https://www.raspberrypi.com/) connected to a monitor
-(it runs great on Pi Zero 2). The goal was to fetch photos directly
-from my Synology NAS over LAN.
+I wanted to have a digital photo frame under my full control and accessing my photos stored on my NAS. Luckily I found [Syno-Photo-Frame](https://github.com/Caleb9/syno-photo-frame), which matched many of my needs. However, the Synology Photos API must've changed just before my first attempts at utilizing it and my background regarding internet protocols goes as far as setting up wifi on microcontrollers...
 
-Why not use Synology Photos in a web browser directly? There are two
-reasons. First, the current version of Synology Photos (1.6.x at the
-time of writing) does not allow slideshow speed adjustments and
-changes photos every 3 or 4 seconds - way too fast for a photo
-frame. Second, running a full web browser is more resource-demanding
-than a simple static image app, which matters when using a Raspberry
-Pi, especially in the Zero variant.
+Hence I decided to switch to a different method of obtaining the photos, 
+which quickly brought me to FTP. If kept in a local network it is usually safe and foremost it is a pretty simple protocol.</br>
+I also wanted to add a motionsensor based standby into the software.</br>
+
+Since this meant quite a restructure to the main software components, I created this fork. Due to my lack of time and skill I can't upkeep the high quality of the original project, so please consider using [it](https://github.com/Caleb9/syno-photo-frame) instead.
 
 ## Setup
 
-### Synology Photos (NAS)
-
-Assuming the Synology Photos package is installed on DSM:
-
-0. Create an __album__ in Synology Photos and add photos to it (note
-   the distinction between an "album" and a "folder").
-1. Click the "Share" button in the album.
-2. Check the "Enable share link" option.
-3. Copy/write down the Share Link - you'll need it when setting up the
-   app on Raspberry Pi later on.
-4. Set Privacy Settings to one of the "Public" options.
-5. Optionally, enable Link Protection. If a password is set, you will
-   need to provide it using the `--password` option when running the
-   app on Raspberry Pi. In the case of accessing Synology Photos over
-   the internet or an untrusted LAN, I recommend making sure your
-   share link uses the HTTPS (not HTTP) scheme to prevent exposing the
-   password.
-6. Click Save.
-
-<img src="doc/ShareLink.png" alt="Album Sharing" />
-
-### Raspberry Pi
-
-Let's assume that you're starting with a fresh installation of
-Raspberry Pi OS Lite, the network has been set up (so you can access
-Synology Photos), and you can access the command line on your Pi.
-
-#### Option 1: Install From Debian Package
-
-[Releases](https://github.com/Caleb9/syno-photo-frame/releases)
-contains pre-built .deb packages for arm64 Linux architecture, which
-should work on Raspberry Pi 3 and up, as well as Zero 2 (assuming the
-64bit version of Raspbian OS *Bookworm* is installed).
-
-- Check the architecture with `dpkg --print-architecture`; it should
-  print "arm64".
-- Check the installed version of Debian with `lsb_release -c` and make
-  sure it says "bookworm".
-
-**For other platforms (including older versions of Debian, such as
-"bullseye"), you must build the project from source - see [Option 2:
-Build From Source](#option-2-build-from-source).**
-
-1. Download the `syno-photo-frame_X.Y.Z_arm64.deb` package from
-   Releases.
-2. Update the system:
-
-   ```bash
-   sudo -- sh -c ' \
-   apt update && \
-   apt upgrade -y'
-   ```
-
-3. `cd` to the directory where the package has been downloaded and
-   install the app:
-
-   ```bash
-   sudo apt install ./syno-photo-frame_*_arm64.deb
-   ```
-
-#### Option 2: Build From Source
-
-Note: These instructions assume a Debian-based Linux distribution, but
-adjusting them should make it possible to build the app for almost any
-platform where Rust and [SDL](https://www.libsdl.org/) are available.
-
-1. [Install Rust](https://www.rust-lang.org/tools/install) if you have
-   not already (or use the [Alternative: Build With
-   Docker](#alternative-build-with-docker) approach).
-
-2. Install build dependencies:
-
-   ```bash
-   sudo -- sh -c ' \
-   apt update && \
-   apt upgrade -y && \
-   apt install -y \
-       libsdl2-dev \
-       libssl-dev'
-   ```
-
-3. Install the app from
-   [crates.io](https://crates.io/crates/syno-photo-frame) (you can use
-   the same command to update the app when a new version gets
-   published):
-
-   ```bash
-   cargo install syno-photo-frame
-   ```
-
-When building is finished, the binary is then located at
-`$HOME/.cargo/bin/syno-photo-frame` and should be available on your
-`$PATH`.
-
-Alternatively, clone the git repository and build the project with (in
-the cloned directory):
-
-```bash
-cargo build --release
-```
-
-The binary is then located at `target/release/syno-photo-frame`.
-
-##### Alternative: Build With Docker
+#### Build with Docker
 
 If you don't want to install Rust or the build dependencies for some
 reason but have Docker available, you can build the binary and/or
 Debian package in a container using the provided
-[Dockerfile](Dockerfile). See instructions in the file to build the
+[Dockerfile](./docker/Dockerfile). See instructions in the file to build the
 app this way.
+
+#### Connect Motionsensor
+
+*__TODO: Pin configuration etc.__*
 
 ## Run
 
-Display the help message to see various available options:
-
-```bash
-syno-photo-frame --help
-```
-
-Run the app:
-
-```bash
-syno-photo-frame {sharing link to Synology Photos album}
-```
+*__TODO: Cronjob, Motion-sensor, parameters__*
 
 If everything works as expected, press Ctrl-C to kill the app.
 
@@ -218,6 +92,8 @@ scheduled in software only, but for startup, you'll need a hardware
 solution, e.g. for Raspberry Pi Zero, I'm using [Witty Pi 3
 Mini](https://www.adafruit.com/product/5038).
 
+
+
 ### Auto Brightness
 
 For my digital photo frame project, I attached a light sensor to Pi's
@@ -252,7 +128,3 @@ valid values.
 You can replace the default image displayed during loading of the
 first photo. Use the `--splash` option to point the app to a .jpeg
 file location.
-
-## Supported By
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg" width=100 />](https://jb.gg/OpenSourceSupport)
