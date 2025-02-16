@@ -3,12 +3,16 @@
 //! syno_photo_frame is a full-screen slideshow app for Synology Photos albums
 
 use std::{
-    error::Error, fmt::{Display, Formatter}, ops::Range, process::Command, sync::mpsc::{self, SyncSender}, thread::{self, Scope, ScopedJoinHandle}, time::Duration
+    error::Error,
+    fmt::{Display, Formatter},
+    ops::Range,
+    process::Command,
+    sync::mpsc::{self, SyncSender},
+    thread::{self, Scope, ScopedJoinHandle},
+    time::Duration,
 };
-
 use std::{thread::sleep as thread_sleep, time::Instant};
-#[cfg(not(target_os = "windows"))]
-use rppal::gpio::Gpio;
+use rppal::gpio::{Gpio, InputPin};
 
 use crate::{
     cli::{Cli, Rotation},
@@ -69,7 +73,6 @@ enum DisplayMode {
 }
 
 const NO_MOTION_STANDBY_DURATION: Duration = Duration::from_secs(60);
-#[cfg(not(target_os = "windows"))]
 const GPIO_MOTION: u8 = 23;
 
 fn slideshow_loop(
@@ -79,8 +82,17 @@ fn slideshow_loop(
     mut current_image: DynamicImage,
 ) -> FrameResult<()> {
     /* Load the first photo as soon as it's ready. */
-
-    let motion_pin = Gpio::new().unwrap().get(GPIO_MOTION).unwrap().into_input_pulldown();
+    let motion_pin: Option<InputPin> = if cli.motionsensor {
+        Some(
+            Gpio::new()
+                .unwrap()
+                .get(GPIO_MOTION)
+                .unwrap()
+                .into_input_pulldown(),
+        )
+    } else {
+        None
+    };
     let mut display_mode = DisplayMode::Show;
     let mut last_activation = Instant::now();
     let mut last_change = Instant::now() - cli.photo_change_interval;
@@ -96,9 +108,12 @@ fn slideshow_loop(
             sdl.handle_quit_event()?;
 
             // Has motion been detected recently?
-            let motion = motion_pin.is_high();
-            if motion {
-                last_activation = Instant::now();
+            let mut motion = true;
+            if motion_pin.is_some() {
+                motion = motion_pin.as_ref().unwrap().is_high();
+                if motion {
+                    last_activation = Instant::now();
+                }
             }
 
             match display_mode {
@@ -108,13 +123,12 @@ fn slideshow_loop(
                     if elapsed_no_motion_duration > NO_MOTION_STANDBY_DURATION {
                         // Turn Display into standby mode
                         Command::new("vcgencmd")
-                        .arg("display_power")
-                        .arg("0")
-                        .output()
-                        .expect("failed to execute process");
+                            .arg("display_power")
+                            .arg("0")
+                            .output()
+                            .expect("failed to execute process");
                         display_mode = DisplayMode::Standby;
                         continue;
-
                     }
 
                     // Sleep unless interval is reached
@@ -123,43 +137,44 @@ fn slideshow_loop(
                         thread_sleep(LOOP_SLEEP_DURATION);
                         continue;
                     }
-        
+
                     if let Ok(next_photo_result) = photo_receiver.try_recv() {
                         let next_image = match next_photo_result {
                             Err(SlideshowError::Other(error)) => {
                                 /* Login error terminates the main thread loop */
                                 break Err(FrameError::Other(error.to_string()));
                             }
-                            ok_or_other_error => {
-                                load_photo_or_error_screen(ok_or_other_error, screen_size, cli.rotation)?
-                            }
+                            ok_or_other_error => load_photo_or_error_screen(
+                                ok_or_other_error,
+                                screen_size,
+                                cli.rotation,
+                            )?,
                         };
                         sdl.update_texture(next_image.as_bytes(), TextureIndex::Next)?;
                         cli.transition.play(sdl)?;
-        
+
                         last_change = Instant::now();
-        
+
                         sdl.swap_textures();
                         current_image = next_image;
                     } else {
                         /* next photo is still being fetched and processed, we have to wait for it */
                         thread_sleep(LOOP_SLEEP_DURATION);
                     }
-                },
+                }
                 DisplayMode::Standby => {
                     if motion {
                         Command::new("vcgencmd")
-                        .arg("display_power")
-                        .arg("1")
-                        .output()
-                        .expect("failed to execute process");
+                            .arg("display_power")
+                            .arg("1")
+                            .output()
+                            .expect("failed to execute process");
                         display_mode = DisplayMode::Show;
                     } else {
                         thread_sleep(LOOP_STANDBY_DURATION);
                     }
                 }
             }
-
         };
         if loop_result.is_err() {
             /* Dropping the receiver terminates photo_fetcher_thread loop */
