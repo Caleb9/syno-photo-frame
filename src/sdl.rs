@@ -135,7 +135,7 @@ pub fn display_size(video: &VideoSubsystem) -> Result<(u32, u32), String> {
 /// Sets up a renderer
 pub fn create_canvas(video: &VideoSubsystem, (w, h): (u32, u32)) -> Result<Canvas<Window>, String> {
     let window = video
-        .window("syno-photo-frame", w, h)
+        .window("ftp-photo-frame", w, h)
         .borderless()
         .build()
         .map_err_to_string()?;

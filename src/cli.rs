@@ -7,9 +7,10 @@ use clap::{builder::TypedValueParser as _, ValueEnum};
 
 use crate::error::ErrorToString;
 
-/// Synology Photos album fullscreen slideshow
+/// FTP-hosted Photos fullscreen slideshow
 ///
-/// Project website: <https://github.com/caleb9/syno-photo-frame>
+/// Project website: <https://github.com/Finnfj/ftp-photo-frame>
+/// Forked from: <https://github.com/caleb9/syno-photo-frame>
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 pub struct Cli {
@@ -72,7 +73,7 @@ pub struct Cli {
 
     /// HTTP request timeout in seconds
     ///
-    /// Must be greater or equal to 5. When Synology Photos does not respond within the timeout, an
+    /// Must be greater or equal to 5. When Server does not respond within the timeout, an
     /// error is displayed. Try to increase the value for slow connections
     #[arg(
         long = "timeout",
@@ -80,7 +81,7 @@ pub struct Cli {
         value_parser = clap::value_parser!(u16).range(5..))]
     pub timeout_seconds: u16,
 
-    /// Requested size of the photo as fetched from the Synology Photos. Can reduce network and CPU
+    /// Requested size of the photo as fetched from the Server. Can reduce network and CPU
     /// utilization at the cost of image quality. Note that photos are still scaled to full-screen
     /// size
     #[arg(long, value_enum, default_value_t = SourceSize::L)]
@@ -149,7 +150,7 @@ impl From<String> for Rotation {
     }
 }
 
-/// Requested size of source photo to fetch from Synology Photos
+/// Requested size of source photo to fetch from Server
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum SourceSize {
     /// small (360x240)

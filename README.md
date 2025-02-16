@@ -24,13 +24,13 @@ Consider that instead, if you utilize one of it's integrations.__
 
 ## Why?
 
-I wanted to have a digital photo frame under my full control and accessing my photos stored on my NAS. Luckily I found [Syno-Photo-Frame](https://github.com/Caleb9/syno-photo-frame), which matched many of my needs. However, the Synology Photos API must've changed just before my first attempts at utilizing it and my background regarding internet protocols goes as far as setting up wifi on microcontrollers...
+I wanted to have a digital photo frame under my full control and accessing my photos stored on my NAS. Luckily I found [Syno-Photo-Frame](https://github.com/Caleb9/syno-photo-frame), which matched many of my needs. However, at the time, the Synology Photos API must've changed just before my first attempts at utilizing it. I struggled debugging the problem, since I have almost no knowledge of internet based APIs...
 
 Hence I decided to switch to a different method of obtaining the photos, 
-which quickly brought me to FTP. If kept in a local network it is usually safe and foremost it is a pretty simple protocol.</br>
+which quickly brought me to FTP. If kept in a local network it is usually safe and it is a pretty simple protocol to implement.</br>
 I also wanted to add a motionsensor based standby into the software.</br>
 
-Since this meant quite a restructure to the main software components, I created this fork. Due to my lack of time and skill I can't upkeep the high quality of the original project, so please consider using [it](https://github.com/Caleb9/syno-photo-frame) instead.
+Since doing this meant restructuring many of the main software components, I created this fork to tinker with. Due to my lack of time and skill I can't upkeep the high quality of the original project, so please consider using [it](https://github.com/Caleb9/syno-photo-frame) instead.
 
 ## Setup
 
@@ -72,15 +72,8 @@ crontab -e
 Add something like this at the end of crontab:
 
 ```bash
-@reboot    sleep 5 && /bin/syno-photo-frame https://{share_link} >> /tmp/syno-photo-frame.log 2>&1
+TODO
 ```
-
-Remember to replace your share link with a real one and adjust the
-binary path depending on the installation method (dpkg or from
-crates.io). A short `sleep` is required to not start before some
-services (network) are up - try to increase it if errors occur. The
-above command redirects error messages to a log file
-`/tmp/syno-photo-frame.log`.
 
 For other (untested) alternatives, see e.g. [this
 article](https://www.dexterindustries.com/howto/run-a-program-on-your-raspberry-pi-at-startup/).
@@ -96,10 +89,10 @@ Mini](https://www.adafruit.com/product/5038).
 
 ### Auto Brightness
 
-For my digital photo frame project, I attached a light sensor to Pi's
+For the digital photo frame project, @Caleb9 attached a light sensor to Pi's
 GPIO to adjust the monitor's brightness automatically depending on
 ambient light. [TSL2591](https://www.adafruit.com/product/1980) is an
-example of such sensor. Check out my
+example of such sensor. Check out @Caleb9 's
 [auto-brightness-rpi-tsl2591](https://github.com/Caleb9/auto-brightness-rpi-tsl2591)
 project to add automatic brightness control to your digital photo
 frame.

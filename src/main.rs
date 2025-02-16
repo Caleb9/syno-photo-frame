@@ -4,7 +4,7 @@ use log::LevelFilter;
 use rand::{self, seq::SliceRandom, Rng};
 use simple_logger::SimpleLogger;
 
-use syno_photo_frame::{
+use ftp_photo_frame::{
     self,
     cli::{Cli, Parser},
     error::FrameError,
@@ -48,7 +48,7 @@ fn init_and_run() -> FrameResult<()> {
         |slice| slice.shuffle(&mut rand::rng()),
     );
 
-    syno_photo_frame::run(
+    ftp_photo_frame::run(
         &cli,
         &mut sdl,
         random,
