@@ -2,6 +2,7 @@
 //!
 //! ftp_photo_frame is a full-screen slideshow app for FTP-hosted Photos
 
+use rppal::gpio::{Gpio, InputPin};
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -12,7 +13,6 @@ use std::{
     time::Duration,
 };
 use std::{thread::sleep as thread_sleep, time::Instant};
-use rppal::gpio::{Gpio, InputPin};
 
 use crate::{
     cli::{Cli, Rotation},
@@ -24,7 +24,6 @@ use crate::{
 
 pub mod cli;
 pub mod error;
-pub mod logging;
 pub mod sdl;
 
 mod asset;
@@ -101,6 +100,7 @@ fn slideshow_loop(
     const LOOP_SLEEP_DURATION: Duration = Duration::from_millis(100);
     const LOOP_STANDBY_DURATION: Duration = Duration::from_millis(10);
 
+    log::info!("Starting slideshow loop Thread...");
     thread::scope::<'_, _, FrameResult<()>>(|thread_scope| {
         photo_fetcher_thread(cli, screen_size, random, thread_scope, photo_sender)?;
 
@@ -112,23 +112,26 @@ fn slideshow_loop(
             if motion_pin.is_some() {
                 motion = motion_pin.as_ref().unwrap().is_high();
                 if motion {
+                    log::debug!("Motion detected");
                     last_activation = Instant::now();
                 }
             }
 
             match display_mode {
                 DisplayMode::Show => {
-                    // Long time no motion?
-                    let elapsed_no_motion_duration = Instant::now() - last_activation;
-                    if elapsed_no_motion_duration > NO_MOTION_STANDBY_DURATION {
-                        // Turn Display into standby mode
-                        Command::new("vcgencmd")
-                            .arg("display_power")
-                            .arg("0")
-                            .output()
-                            .expect("failed to execute process");
-                        display_mode = DisplayMode::Standby;
-                        continue;
+                    if cli.motionsensor {
+                        // Long time no motion?
+                        let elapsed_no_motion_duration = Instant::now() - last_activation;
+                        if elapsed_no_motion_duration > NO_MOTION_STANDBY_DURATION {
+                            log::info!("Slideshow: Long time no motion detected. Command display to enter standby mode.");
+                            Command::new("vcgencmd")
+                                .arg("display_power")
+                                .arg("0")
+                                .output()
+                                .expect("failed to execute process");
+                            display_mode = DisplayMode::Standby;
+                            continue;
+                        }
                     }
 
                     // Sleep unless interval is reached
@@ -150,6 +153,7 @@ fn slideshow_loop(
                                 cli.rotation,
                             )?,
                         };
+                        log::info!("Slideshow: Received new Photo, displaying...");
                         sdl.update_texture(next_image.as_bytes(), TextureIndex::Next)?;
                         cli.transition.play(sdl)?;
 
@@ -164,6 +168,7 @@ fn slideshow_loop(
                 }
                 DisplayMode::Standby => {
                     if motion {
+                        log::info!("Slideshow: Motion detected during standby. Command display to wake up.");
                         Command::new("vcgencmd")
                             .arg("display_power")
                             .arg("1")
@@ -171,6 +176,7 @@ fn slideshow_loop(
                             .expect("failed to execute process");
                         display_mode = DisplayMode::Show;
                     } else {
+                        // Do nothing
                         thread_sleep(LOOP_STANDBY_DURATION);
                     }
                 }
@@ -193,10 +199,12 @@ fn photo_fetcher_thread<'a>(
 ) -> Result<ScopedJoinHandle<'a, ()>, String> {
     let mut slideshow = new_slideshow(cli)?;
     Ok(thread_scope.spawn(move || loop {
+        log::info!("Photo-Fetcher: Fetching next photo");
         let photo_result = slideshow
             .get_next_photo(random)
             .and_then(|bytes| img::load_from_memory(&bytes).map_err(SlideshowError::Other))
             .map(|image| image.fit_to_screen_and_add_background(screen_size, cli.rotation));
+        log::info!("Photo-Fetcher: Succesfully fetched next photo, sending to slideshow...");
         /* Blocks until photo is received by the main thread */
         let send_result = photo_sender.send(photo_result);
         if send_result.is_err() {

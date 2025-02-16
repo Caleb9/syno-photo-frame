@@ -71,16 +71,22 @@ impl<'a> Slideshow<'a> {
     fn get_photos_count(&self) -> u32 {
         // Filter for jpegs
         let pattern = regex!(r#"^.+\.(?i:jpg|jpeg)"#);
+
         // Create a connection to FTP server
         let ftp_connect = self.server.host_str().unwrap();
+        let ftp_user = self.user.clone().unwrap();
+        let ftp_password = self.password.clone().unwrap();
+        log::info!("FTP: Connecting to server: {}", ftp_connect);
         let mut ftp_stream = FtpStream::connect(format!("{}:21", ftp_connect)).unwrap();
-        let _ = ftp_stream.login(self.user.clone().unwrap().as_str(), self.password.clone().unwrap().as_str()).unwrap();
+        let _ = ftp_stream.login(ftp_user.as_str(), ftp_password.as_str()).unwrap();
 
         
         // Change into a new directory, relative to the one we are currently in.
+        log::info!("FTP: Changing directory to: {}", self.folder);
         let _ = ftp_stream.cwd(&self.folder).unwrap();
 
         // Fetch list of Photos
+        log::info!("FTP: Fetching list of photos");
         let mut photos = ftp_stream.nlst(None).unwrap();
         photos.retain(| filename | pattern.is_match(filename));
 
@@ -92,22 +98,27 @@ impl<'a> Slideshow<'a> {
     pub fn get_photo(&mut self, photo_index: u32) -> Result<Bytes, ()> {
         // Filter for jpegs
         let pattern = regex!(r#"^.+\.(?i:jpg|jpeg)"#);
+
         // Create a connection to an FTP server and authenticate to it.
         let ftp_connect = self.server.host_str().unwrap();
+        let ftp_user = self.user.clone().unwrap();
+        let ftp_password = self.password.clone().unwrap();
+        log::info!("FTP: Connecting to server: {}", ftp_connect);
         let mut ftp_stream = FtpStream::connect(format!("{}:21", ftp_connect)).unwrap();
-        let _ = ftp_stream.login(self.user.clone().unwrap().as_str(), self.password.clone().unwrap().as_str()).unwrap();
-
+        let _ = ftp_stream.login(ftp_user.as_str(), ftp_password.as_str()).unwrap();
         
         // Change into a new directory, relative to the one we are currently in.
+        log::info!("FTP: Changing directory to: {}", self.folder);
         let _ = ftp_stream.cwd(&self.folder).unwrap();
 
         // Fetch list of Photos
+        log::info!("FTP: Fetching list of photos");
         let mut photos = ftp_stream.nlst(None).unwrap();
         photos.retain(| filename | pattern.is_match(filename));
 
         // Retrieve (GET) a file from the FTP server in the current working directory.
+        log::info!("FTP: Fetching photo: {}", photos.get(photo_index as usize).unwrap());
         let remote_file = Bytes::from(ftp_stream.simple_retr(photos.get(photo_index as usize).unwrap()).unwrap().into_inner());
-
 
         // Terminate the connection to the server.
         let _ = ftp_stream.quit();
@@ -132,7 +143,7 @@ impl<'a> Slideshow<'a> {
             match photo_bytes_result {
                 Ok(photo_bytes) => break Ok(photo_bytes),
                 Err(_) => { 
-                    /* Photos were removed from the album since we fetched its item_count. Reinitialize */
+                    log::info!("FTP: Photos were removed from the folder after last fetching total photo count, reinitialize...");
                     self.photo_display_sequence.clear();
                     continue; 
                 },
