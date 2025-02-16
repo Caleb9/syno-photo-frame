@@ -44,8 +44,8 @@ fn init_and_run() -> FrameResult<()> {
 
     /* Random */
     let random: Random = (
-        |range| rand::thread_rng().gen_range(range),
-        |slice| slice.shuffle(&mut rand::thread_rng()),
+        |range| rand::rng().random_range(range),
+        |slice| slice.shuffle(&mut rand::rng()),
     );
 
     syno_photo_frame::run(

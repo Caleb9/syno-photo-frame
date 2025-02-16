@@ -32,16 +32,17 @@ ftp = "3.0.1"
 image = { version = "0.25.*", default-features = false, features = ["jpeg", "png"] }
 lazy-regex = "3.1.0"
 log = "0.4.*"
-rand = "0.8.*"
-reqwest = { version = "0.12.*", features = ["blocking", "cookies", "json"] }
-sdl2 = "0.36.*"
+rand = "0.9.*"
+sdl2 = "0.37.*"
 serde = { version = "1.*", features = ["derive"] }
 serde_json = "1.*"
-simple_logger = "4.*"
+simple_logger = "5.*"
+url-parse = "1.0.7"
 
 [dev-dependencies]
-mock_instant = "0.3.*"
-mockall = "0.12.*"
+mock_instant = "0.5.*"
+mockall = "0.13.*"
+
 
 [target.'aarch64-unknown-linux-gnu'.dependencies]
-rppal = "0.17.1"
+rppal = "0.22.1"
