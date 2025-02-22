@@ -1,7 +1,7 @@
 [package]
 name = "syno-photo-frame"
 version = "0.14.3"
-edition = "2021"
+edition = "2024"
 description = "Full-screen slideshow for Synology Photos and Immich albums"
 license = "GPL-3.0-or-later"
 authors = ["Piotr Karasinski"]
@@ -14,7 +14,7 @@ keywords = [
     "digital-photo-frame",
     "raspberry-pi",
 ]
-rust-version = "1.74"
+rust-version = "1.85"
 exclude = [
     ".*",
     "doc/",

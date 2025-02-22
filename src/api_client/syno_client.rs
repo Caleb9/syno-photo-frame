@@ -4,7 +4,7 @@ use std::{
     sync::OnceLock,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use bytes::Bytes;
 use regex::Regex;
 use serde::Deserialize;
@@ -13,7 +13,7 @@ use syno_api::dto::{ApiResponse, List};
 use crate::{
     api_client::{ApiClient, LoginError, SharingId, SortBy},
     cli::SourceSize,
-    http::{read_response, CookieStore, HttpClient, HttpResponse, InvalidHttpResponse, Url},
+    http::{CookieStore, HttpClient, HttpResponse, InvalidHttpResponse, Url, read_response},
 };
 
 pub struct SynoApiClient<'a, H, C> {
@@ -22,7 +22,7 @@ pub struct SynoApiClient<'a, H, C> {
     api_url: Url,
     api_thumbnail_get_url: Url,
     sharing_id: SharingId,
-    password: &'a Option<String>,
+    password: Option<String>,
 }
 
 impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
@@ -38,14 +38,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
             ("method", "login"),
             ("version", "1"),
             ("sharing_id", &self.sharing_id),
-            (
-                "password",
-                if let Some(password) = self.password {
-                    &format!("\"{password}\"")
-                } else {
-                    ""
-                },
-            ),
+            ("password", self.password.as_deref().unwrap_or_default()),
         ];
         let response = self
             .http_client
@@ -135,12 +128,12 @@ impl<'a, H, C> SynoApiClient<'a, H, C> {
             api_url,
             api_thumbnail_get_url,
             sharing_id,
-            password: &None,
+            password: None,
         })
     }
 
-    pub fn with_password(mut self, password: &'a Option<String>) -> Self {
-        self.password = password;
+    pub fn with_password(mut self, password: &Option<String>) -> Self {
+        self.password = password.as_ref().map(|p| format!("\"{p}\""));
         self
     }
 }
@@ -184,6 +177,10 @@ impl Display for InvalidApiResponse {
 
 #[cfg(test)]
 mod tests {
+    use reqwest::cookie::Jar;
+
+    use crate::test_helpers::{self, MockHttpClient};
+
     use super::*;
 
     #[test]
@@ -217,5 +214,28 @@ mod tests {
             );
             assert_eq!(sharing_id.0, "FakeSharingId");
         }
+    }
+
+    #[test]
+    fn login_password_param_is_quoted() {
+        const PASSWORD: &str = "P455w0rd";
+        let mut http_client = MockHttpClient::new();
+        http_client
+            .expect_post()
+            .withf(|_, form, _| form.contains(&("password", &format!("\"{PASSWORD}\""))))
+            .return_once(move |_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
+        let password = Some(PASSWORD.to_owned());
+        let cookie_store = Jar::default();
+        let sut = SynoApiClient::build(
+            &http_client,
+            &cookie_store,
+            &Url::parse("http://dummy/aa/sharing/FakeSharingId").unwrap(),
+        )
+        .unwrap()
+        .with_password(&password);
+
+        let _ = sut.login();
+
+        http_client.checkpoint();
     }
 }
