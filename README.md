@@ -11,8 +11,9 @@ Consider that instead, if you utilize one of it's integrations.__
 - [Why?](#why)
 - [Setup](#setup)
     - [Build with Docker](#build-with-docker)
-    - [Connect Motionsensor](#connect-motionsensor)
+    - [Motionsensor](#motionsensor)
 - [Run](#run)
+    - [CLI Options](#cli-options)
 - [Optional Stuff](#optional-stuff)
   - [Increase the Swap Size on Raspberry Pi Zero](#increase-the-swap-size-on-raspberry-pi-zero)
   - [Auto-start](#auto-start)
@@ -34,7 +35,7 @@ Since doing this meant restructuring many of the main software components, I cre
 
 ## Setup
 
-#### Build with Docker
+### Build with Docker
 
 If you don't want to install Rust or the build dependencies for some
 reason but have Docker available, you can build the binary and/or
@@ -42,13 +43,32 @@ Debian package in a container using the provided
 [Dockerfile](./docker/Dockerfile). See instructions in the file to build the
 app this way.
 
-#### Connect Motionsensor
+### Motionsensor
+
+With the motionsensor option you can use a simple signal on a GPIO pin to attempt to move your display into standby mode via an HDMI call, if your monitor supports it.
+
+#### Requirements
+- You need to use `dtoverlay=vc4-fkms-v3d` in `/boot/firmware/config.txt` on Raspbian
+
+The Pin is currently hardcoded to GPIO23 (*planned to be configurable*) and the software expects a high signal for 'presence detected'. If no presence has been detected for a while, it will attempt to signal standby to your HDMI display and afterwards wake it up as soon as a presence has been detected.
 
 *__TODO: Pin configuration etc.__*
 
 ## Run
 
-*__TODO: Cronjob, Motion-sensor, parameters__*
+#### CLI Options
+- `--server` FTP-Server IP or Hostname
+- `--folder` Images folder path
+- `--user` FTP Username
+- `--password` FTP Password
+- `-i` photo change interval in seconds (default 30s)
+- `-o` display order: `random`, `byname`, `bydate`(default)
+- `--random-start`
+- `--motion-sensor` activates the standby functionality. Refer to [Motionsensor](#motionsensor)
+- `--rotation` rotation of the display in degrees
+- `--splash` Path to custom JPEG splashscreen
+
+*__TODO: Motion-sensor, parameters__*
 
 If everything works as expected, press Ctrl-C to kill the app.
 
@@ -63,16 +83,21 @@ Pi](https://pimylifeup.com/raspberry-pi-swap-file/).
 ### Auto-start
 
 To start the slideshow automatically on boot, you can add it to
-crontab:
-
+crontab. </br>
+Directly add a startup call there or instead add a script containing the startup call:
+```bash
+#!/bin/bash
+./ftp-photo-frame --server=192.168.178.69 --folder="/home/Photos/Gallery" --user=MYUSERNAME -p=MYPASSWORD -i=20 -o=random --motionsensor
+```
+Then open crontab
 ```bash
 crontab -e
 ```
 
-Add something like this at the end of crontab:
+Add something like this at the end of crontab, save and exit:
 
 ```bash
-TODO
+@reboot ~/start.sh
 ```
 
 For other (untested) alternatives, see e.g. [this
@@ -82,8 +107,8 @@ article](https://www.dexterindustries.com/howto/run-a-program-on-your-raspberry-
 
 A proper digital photo frame doesn't run 24/7. Shutdown can be
 scheduled in software only, but for startup, you'll need a hardware
-solution, e.g. for Raspberry Pi Zero, I'm using [Witty Pi 3
-Mini](https://www.adafruit.com/product/5038).
+solution, e.g. for Raspberry Pi Zero  [Witty Pi 3
+Mini](https://www.adafruit.com/product/5038) appears to be an option.
 
 
 
