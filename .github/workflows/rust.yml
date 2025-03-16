@@ -1,1 +1,31 @@
+name: Build
 
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: docker://debian:bookworm
+      options: --privileged
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Docker environment
+      run: |
+        rm /bin/sh && ln -s /bin/bash /bin/sh
+        mkdir /build
+        apt update
+        apt install -y curl build-essential
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source $HOME/.cargo/env
+        rustup target add aarch64-unknown-linux-gnu
+        dpkg --add-architecture arm64
+        apt update
+        apt install -y gcc-aarch64-linux-gnu libsdl2-dev:arm64 libsdl2-image-dev:arm64 libsdl2-ttf-dev:arm64
+
+    - name: Run Cargo build
+      run: cargo build --release
