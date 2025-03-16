@@ -29,7 +29,10 @@ jobs:
         apt install -y gcc-aarch64-linux-gnu libsdl2-dev:arm64 libsdl2-image-dev:arm64 libsdl2-ttf-dev:arm64
 
     - name: Run Cargo build
-      run: cargo build --release
+      shell: bash
+      run: |
+        source $HOME/.cargo/env
+        cargo build --release
     
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
