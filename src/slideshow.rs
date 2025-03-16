@@ -9,7 +9,7 @@ use url_parse::url::Url;
 use url_parse::core::Parser;
 
 use crate::{
-    cli::{Order, SourceSize},
+    cli::Order,
     Random,
 };
 
@@ -32,7 +32,6 @@ pub struct Slideshow<'a> {
     photo_display_sequence: Vec<u32>,
     order: Order,
     random_start: bool,
-    source_size: SourceSize,
 }
 
 #[derive(Debug)]
@@ -51,7 +50,6 @@ impl<'a> Slideshow<'a> {
             photo_display_sequence: vec![],
             order: Order::ByDate,
             random_start: false,
-            source_size: SourceSize::L,
         })
     }
 
@@ -67,11 +65,6 @@ impl<'a> Slideshow<'a> {
 
     pub fn with_random_start(mut self, random_start: bool) -> Self {
         self.random_start = random_start;
-        self
-    }
-
-    pub fn with_source_size(mut self, size: SourceSize) -> Self {
-        self.source_size = size;
         self
     }
 

@@ -22,11 +22,11 @@ pub struct Cli {
     #[arg(long)]
     pub folder: String,
 
-    /// User for smb access
+    /// User for FTP access
     #[arg(short = 'u', long = "user")]
     pub user: Option<String>,
 
-    /// Password for smb access
+    /// Password for FTP access
     #[arg(short = 'p', long = "password")]
     pub password: Option<String>,
 
@@ -70,26 +70,6 @@ pub struct Cli {
     /// Path to a JPEG file to display during startup, replacing the default splash-screen
     #[arg(long)]
     pub splash: Option<PathBuf>,
-
-    /// HTTP request timeout in seconds
-    ///
-    /// Must be greater or equal to 5. When Server does not respond within the timeout, an
-    /// error is displayed. Try to increase the value for slow connections
-    #[arg(
-        long = "timeout",
-        default_value_t = 30,
-        value_parser = clap::value_parser!(u16).range(5..))]
-    pub timeout_seconds: u16,
-
-    /// Requested size of the photo as fetched from the Server. Can reduce network and CPU
-    /// utilization at the cost of image quality. Note that photos are still scaled to full-screen
-    /// size
-    #[arg(long, value_enum, default_value_t = SourceSize::L)]
-    pub source_size: SourceSize,
-
-    /// Disable checking for updates during startup
-    #[arg(long, default_value_t = true)]
-    pub disable_update_check: bool,
 }
 
 fn try_parse_duration(arg: &str) -> Result<Duration, String> {
