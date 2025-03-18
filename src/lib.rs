@@ -66,7 +66,61 @@ fn show_welcome_screen(cli: &Cli, sdl: &mut impl Sdl) -> FrameResult<DynamicImag
     Ok(welcome_img)
 }
 
+fn handle_next_photo_result(
+    next_photo_result: Result<DynamicImage, SlideshowError>,
+    screen_size: (u32, u32),
+    rotation: Rotation,
+) -> FrameResult<DynamicImage> {
+    match next_photo_result {
+        Err(SlideshowError::Other(error)) => {
+            /* Login error terminates the main thread loop */
+            Err(FrameError::Other(error.to_string()))
+        }
+        ok_or_other_error => load_photo_or_error_screen(ok_or_other_error, screen_size, rotation),
+    }
+}
+
+fn display_new_photo(
+    next_photo_result: Result<DynamicImage, SlideshowError>,
+    screen_size: (u32, u32),
+    rotation: Rotation,
+    sdl: &mut impl Sdl,
+    cli: &Cli,
+    last_change: &mut Instant,
+    current_image: &mut DynamicImage,
+) -> FrameResult<()> {
+    let next_image = handle_next_photo_result(next_photo_result, screen_size, rotation)?;
+
+    log::info!("Slideshow: Received new Photo, displaying...");
+    sdl.update_texture(next_image.as_bytes(), TextureIndex::Next)?;
+    cli.transition.play(sdl)?;
+    sdl.swap_textures();
+
+    *last_change = Instant::now();
+    *current_image = next_image;
+
+    Ok(())
+}
+#[derive(PartialEq)]
+enum ScreenState {
+    On,
+    Standby,
+}
+
+fn screen_mode(screenstate: ScreenState) {
+    Command::new("vcgencmd")
+        .arg("display_power")
+        .arg(if screenstate == ScreenState::Standby {
+            "0"
+        } else {
+            "1"
+        })
+        .output()
+        .expect("failed to execute process");
+}
+
 enum DisplayMode {
+    Init,
     Show,
     Standby,
 }
@@ -92,7 +146,7 @@ fn slideshow_loop(
     } else {
         None
     };
-    let mut display_mode = DisplayMode::Show;
+    let mut display_mode = DisplayMode::Init;
     let mut last_activation = Instant::now();
     let mut last_change = Instant::now() - cli.photo_change_interval;
     let screen_size = sdl.size();
@@ -104,76 +158,73 @@ fn slideshow_loop(
     thread::scope::<'_, _, FrameResult<()>>(|thread_scope| {
         photo_fetcher_thread(cli, screen_size, random, thread_scope, photo_sender)?;
 
-        let loop_result = loop {
+        let _loop_result: Result<(), FrameError> = loop {
             sdl.handle_quit_event()?;
 
             // Has motion been detected recently?
             let mut motion = true;
-            if motion_pin.is_some() {
-                motion = motion_pin.as_ref().unwrap().is_high();
-                if motion {
-                    log::debug!("Motion detected");
-                    last_activation = Instant::now();
+            if cli.motionsensor {
+                if motion_pin.is_some() {
+                    motion = motion_pin.as_ref().unwrap().is_high();
+                    if motion {
+                        log::debug!("Motion detected");
+                        last_activation = Instant::now();
+                    }
                 }
             }
 
             match display_mode {
+                DisplayMode::Init => {
+                    // Check if new photo is available for display
+                    if let Ok(next_photo_result) = photo_receiver.try_recv() {
+                        display_new_photo(
+                            next_photo_result,
+                            screen_size,
+                            cli.rotation,
+                            sdl,
+                            cli,
+                            &mut last_change,
+                            &mut current_image,
+                        )?;
+                        display_mode = DisplayMode::Show;
+                    } else {
+                        /* next photo is still being fetched and processed, we have to wait for it */
+                        thread_sleep(LOOP_SLEEP_DURATION);
+                    }
+                }
+
                 DisplayMode::Show => {
                     if cli.motionsensor {
                         // Long time no motion?
                         let elapsed_no_motion_duration = Instant::now() - last_activation;
                         if elapsed_no_motion_duration > NO_MOTION_STANDBY_DURATION {
                             log::info!("Slideshow: Long time no motion detected. Command display to enter standby mode.");
-                            Command::new("vcgencmd")
-                                .arg("display_power")
-                                .arg("0")
-                                .output()
-                                .expect("failed to execute process");
+                            screen_mode(ScreenState::Standby);
                             display_mode = DisplayMode::Standby;
                             continue;
                         }
                     }
-
-                    // Sleep unless interval is reached
-                    let elapsed_display_duration = Instant::now() - last_change;
-                    if elapsed_display_duration < cli.photo_change_interval {
-                        thread_sleep(LOOP_SLEEP_DURATION);
-                        continue;
-                    }
-
+                    // Check if new photo is available for display
                     if let Ok(next_photo_result) = photo_receiver.try_recv() {
-                        let next_image = match next_photo_result {
-                            Err(SlideshowError::Other(error)) => {
-                                /* Login error terminates the main thread loop */
-                                break Err(FrameError::Other(error.to_string()));
-                            }
-                            ok_or_other_error => load_photo_or_error_screen(
-                                ok_or_other_error,
-                                screen_size,
-                                cli.rotation,
-                            )?,
-                        };
-                        log::info!("Slideshow: Received new Photo, displaying...");
-                        sdl.update_texture(next_image.as_bytes(), TextureIndex::Next)?;
-                        cli.transition.play(sdl)?;
-
-                        last_change = Instant::now();
-
-                        sdl.swap_textures();
-                        current_image = next_image;
+                        display_new_photo(
+                            next_photo_result,
+                            screen_size,
+                            cli.rotation,
+                            sdl,
+                            cli,
+                            &mut last_change,
+                            &mut current_image,
+                        )?;
                     } else {
                         /* next photo is still being fetched and processed, we have to wait for it */
                         thread_sleep(LOOP_SLEEP_DURATION);
                     }
                 }
+
                 DisplayMode::Standby => {
                     if motion {
                         log::info!("Slideshow: Motion detected during standby. Command display to wake up.");
-                        Command::new("vcgencmd")
-                            .arg("display_power")
-                            .arg("1")
-                            .output()
-                            .expect("failed to execute process");
+                        screen_mode(ScreenState::On);
                         display_mode = DisplayMode::Show;
                     } else {
                         // Do nothing
@@ -182,11 +233,11 @@ fn slideshow_loop(
                 }
             }
         };
-        if loop_result.is_err() {
+        if _loop_result.is_err() {
             /* Dropping the receiver terminates photo_fetcher_thread loop */
             drop(photo_receiver);
         }
-        loop_result
+        _loop_result
     })
 }
 
