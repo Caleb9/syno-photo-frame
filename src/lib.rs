@@ -167,7 +167,6 @@ fn slideshow_loop(
                 if motion_pin.is_some() {
                     motion = motion_pin.as_ref().unwrap().is_high();
                     if motion {
-                        log::debug!("Motion detected");
                         last_activation = Instant::now();
                     }
                 }
