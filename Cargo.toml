@@ -28,6 +28,7 @@ exclude = [
 [dependencies]
 bytes = "1.*"
 clap = { version = "4.*", features = ["derive", "wrap_help"] }
+fast_image_resize = { version = "5.1.2", features = ["image"] }
 ftp = "3.0.1"
 image = { version = "0.25.*", default-features = false, features = ["jpeg", "png"] }
 lazy-regex = "3.1.0"

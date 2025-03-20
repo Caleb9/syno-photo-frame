@@ -3,12 +3,11 @@ use std::thread::{self, JoinHandle};
 pub use image::{open, DynamicImage};
 
 use image::{
-    self,
-    imageops::{self, FilterType},
-    GenericImageView,
+    self, imageops::{self}, GenericImageView
 };
 
 use crate::{cli::Rotation, error::ErrorToString};
+use fast_image_resize::*;
 
 pub trait Framed {
     /// Resizes an image while preserving the aspect ratio, and centers it on screen. Returns a new
@@ -56,7 +55,15 @@ impl Framed for DynamicImage {
     }
 
     fn resize(&self, new_width: u32, new_height: u32) -> Self {
-        self.resize(new_width, new_height, FilterType::Lanczos3)
+        log::info!("Resizing image: to {}x{}", new_width, new_height);
+        let start = std::time::Instant::now();
+
+        let mut resized_image = DynamicImage::new(new_width, new_height, self.color());
+        let mut resizer = fast_image_resize::Resizer::new();
+        resizer.resize(self, &mut resized_image, &fast_image_resize::ResizeOptions::new().resize_alg(ResizeAlg::Convolution(fast_image_resize::FilterType::Lanczos3)).fit_into_destination(None)).unwrap();
+        
+        log::info!("Resizing took: {:?}", start.elapsed());
+        return resized_image;
     }
 
     fn rotate(&self, degrees: Rotation) -> Self {
@@ -122,14 +129,8 @@ fn resize_to_fit_screen(original: &DynamicImage, (x_res, y_res): (u32, u32)) -> 
     let screen_dimensions = Dimensions::from((x_res, y_res));
     let foreground_dimensions = original_dimensions.resize(screen_dimensions);
 
-    if foreground_dimensions.is_exact_fit_to(screen_dimensions) {
-        /* Image fits perfectly, background not needed. Note that this may still stretch the image
-         * by one pixel horizontally or vertically to make a perfect fit when resized dimensions
-         * are off by a fraction. */
-        return original.resize_exact(x_res, y_res, FilterType::Lanczos3);
-    }
-
-    Framed::resize(original, x_res, y_res)
+    let (new_width, new_height) = foreground_dimensions.into();
+    Framed::resize(original, new_width, new_height)
 }
 
 fn center_on_screen(original: &DynamicImage, (x_res, y_res): (u32, u32)) -> DynamicImage {
@@ -186,11 +187,15 @@ fn background_fill_threads(
         ),
     );
     let bg_thread1 = thread::spawn(move || {
-        let bg = bg_crop1.resize(x_res, y_res, FilterType::Nearest);
+        let mut bg = DynamicImage::new(x_res, y_res, bg_crop1.color());
+        let mut resizer = fast_image_resize::Resizer::new();
+        resizer.resize(&bg_crop1, &mut bg, &fast_image_resize::ResizeOptions::new().resize_alg(ResizeAlg::Nearest).fit_into_destination(None)).unwrap();
         brighten_and_blur(&bg)
     });
     let bg_thread2 = thread::spawn(move || {
-        let bg = bg_crop2.resize(x_res, y_res, FilterType::Nearest);
+        let mut bg = DynamicImage::new(x_res, y_res, bg_crop2.color());
+        let mut resizer = fast_image_resize::Resizer::new();
+        resizer.resize(&bg_crop2, &mut bg, &fast_image_resize::ResizeOptions::new().resize_alg(ResizeAlg::Nearest).fit_into_destination(None)).unwrap();
         brighten_and_blur(&bg)
     });
     (bg_thread1, bg_thread2)
@@ -217,6 +222,12 @@ impl From<(u32, u32)> for Dimensions {
     }
 }
 
+impl Into<(u32, u32)> for Dimensions {
+    fn into(self) -> (u32, u32) {
+        (self.w as u32, self.h as u32)
+    }
+}
+
 impl Dimensions {
     const fn new(w: f64, h: f64) -> Self {
         Self { w, h }
@@ -224,11 +235,6 @@ impl Dimensions {
 
     fn diff(self, Dimensions { w, h }: Dimensions) -> (f64, f64) {
         (f64::abs(self.w - w), f64::abs(self.h - h))
-    }
-
-    fn is_exact_fit_to(self, target: Dimensions) -> bool {
-        let (w_diff, h_diff) = self.diff(target);
-        w_diff as u32 == 0 && h_diff as u32 == 0
     }
 
     /// Resize dimensions preserving aspect ratio. The dimensions are scaled to the maximum possible
