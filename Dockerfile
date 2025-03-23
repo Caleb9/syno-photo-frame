@@ -54,7 +54,7 @@ RUN make
 # build`, making it possible to extract the artifacts from Docker
 # images to the local file system.
 FROM scratch AS dpkg
-COPY --from=build /workspace/dpkg/syno-photo-frame_*.deb ./
+COPY --from=build /workspace/dpkg/syno-photo-frame_* ./
 
 FROM scratch AS bin
 COPY --from=build /workspace/target/release/syno-photo-frame ./

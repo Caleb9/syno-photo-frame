@@ -213,7 +213,7 @@ fn background_fill_threads(
 fn brighten_and_blur_background(background: &DynamicImage) -> DynamicImage {
     const BRIGHTNESS_OFFSET: i32 = -20;
     const BLUR_SIGMA: f32 = 45.0;
-    background.brighten(BRIGHTNESS_OFFSET).blur(BLUR_SIGMA)
+    background.brighten(BRIGHTNESS_OFFSET).fast_blur(BLUR_SIGMA)
 }
 
 #[derive(Debug, Clone, Copy)]

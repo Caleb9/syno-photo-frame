@@ -31,6 +31,8 @@ all:
 	@dpkg-deb --root-owner-group --build $(dpkg_name)
 # `lintian` needs to be installed for this to work
 	@lintian $(dpkg_name).deb
+# Generate SHA256 checksum file
+	@sha256sum $(dpkg_name).deb > $(dpkg_name).sha256
 # Clean up build directory
 	@rm -r $(dpkg_name)
 
