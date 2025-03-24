@@ -11,15 +11,14 @@ all:
 	@sed -i 's/^version = "\(..*\)"/version = "$(VERSION)"/' ../Cargo.toml
 	@cargo build --release
 # Create package build dir hierarchy
-	@mkdir -m 0755 $(dpkg_name)
-	@mkdir -m 0755 $(dpkg_name)/bin
-	@mkdir -m 0755 $(dpkg_name)/usr
-	@mkdir -m 0755 $(dpkg_name)/usr/share
-	@mkdir -m 0755 $(dpkg_name)/usr/share/doc
-	@mkdir -m 0755 $(dpkg_name)/usr/share/doc/$(name)
-	@mkdir $(dpkg_name)/DEBIAN
+	@mkdir -p \
+		$(dpkg_name)/bin \
+		$(dpkg_name)/usr/share/doc/$(name) \
+		$(dpkg_name)/DEBIAN
+	@chmod -R 0755 $(dpkg_name)
 	@cp control $(dpkg_name)/DEBIAN/
-	@cp -p copyright $(dpkg_name)/usr/share/doc/$(name)
+	@cp copyright $(dpkg_name)/usr/share/doc/$(name)
+	@chmod 0644 $(dpkg_name)/usr/share/doc/$(name)/copyright
 # Set version and architecture in package control file
 	@sed -i 's/^Version: 0.0.0/Version: $(VERSION)/' $(dpkg_name)/DEBIAN/control
 	@sed -i 's/^Architecture:/Architecture: $(arch)/' $(dpkg_name)/DEBIAN/control
@@ -39,4 +38,5 @@ all:
 clean:
 	@rm -rvf \
 		$(name)_*_$(arch) \
-		*.deb
+		*.deb \
+		*.sha256
