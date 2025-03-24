@@ -38,6 +38,7 @@ __If you like the project, give it a star ⭐, or consider becoming a__
     - [Start from a Random Photo and in Random Order](#start-from-a-random-photo-and-in-random-order)
     - [Change the Transition Effect](#change-the-transition-effect)
     - [Customize the Splash-Screen](#customize-the-splash-screen)
+  - [Disclaimer](#disclaimer)
 
 ## Why?
 
@@ -280,3 +281,16 @@ valid values.
 You can replace the default image displayed during loading of the
 first photo. Use the `--splash` option to point the app to a .jpeg
 file location.
+
+## Disclaimer
+
+This project is an independent, open-source application and is not
+affiliated, associated, authorized, endorsed by, or in any way
+officially connected with Synology Inc. "Synology" and any related
+product names, logos, and trademarks are the property of Synology Inc.
+
+The use of Synology Photos in this project is solely for
+interoperability purposes, and the project does not provide any
+official support from Synology. All trademarks, product names, and
+company names mentioned in this repository belong to their respective
+owners.
