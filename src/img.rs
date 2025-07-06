@@ -1,12 +1,11 @@
-pub use image::{open, DynamicImage};
+pub use image::{DynamicImage, open};
 
 use std::thread::{self, JoinHandle};
 
 use anyhow::Result;
 use image::{
-    self,
+    self, GenericImageView,
     imageops::{self, FilterType},
-    GenericImageView,
 };
 
 use crate::cli::{Background, Rotation};

@@ -1,6 +1,6 @@
 use std::{fmt, ops::Deref, sync::OnceLock};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use bytes::Bytes;
 use regex::Regex;
 

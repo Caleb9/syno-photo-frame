@@ -1,16 +1,15 @@
 use std::{sync::Arc, time::Duration};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use log::LevelFilter;
 use simple_logger::SimpleLogger;
 
 use syno_photo_frame::{
-    self,
+    self, LoginError, QuitEvent, RandomImpl,
     cli::{Cli, Parser},
     http::ClientBuilder,
     logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
-    LoginError, QuitEvent, RandomImpl,
 };
 
 fn main() -> Result<()> {

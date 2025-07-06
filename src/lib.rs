@@ -17,10 +17,10 @@ use std::{thread::sleep as thread_sleep, time::Instant};
 #[cfg(test)]
 use {mock_instant::Instant, test_helpers::fake_sleep as thread_sleep};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::{
-    api_client::{immich_client::ImmichApiClient, syno_client::SynoApiClient, ApiClient},
+    api_client::{ApiClient, immich_client::ImmichApiClient, syno_client::SynoApiClient},
     cli::{Backend, Cli},
     http::{CookieStore, HttpClient},
     img::{DynamicImage, Framed},
@@ -241,17 +241,23 @@ where
         .with_ordering(cli.order)
         .with_random_start(cli.random_start)
         .with_source_size(cli.source_size);
-    Ok(thread_scope.spawn(move || loop {
-        let photo_result = slideshow
-            .get_next_photo()
-            .and_then(|bytes| load_image_from_memory(&bytes))
-            .map(|image| {
-                image.fit_to_screen_and_add_background(screen_size, cli.rotation, cli.background)
-            });
-        /* Blocks until photo is received by the main thread */
-        let send_result = photo_sender.send(photo_result);
-        if send_result.is_err() {
-            break;
+    Ok(thread_scope.spawn(move || {
+        loop {
+            let photo_result = slideshow
+                .get_next_photo()
+                .and_then(|bytes| load_image_from_memory(&bytes))
+                .map(|image| {
+                    image.fit_to_screen_and_add_background(
+                        screen_size,
+                        cli.rotation,
+                        cli.background,
+                    )
+                });
+            /* Blocks until photo is received by the main thread */
+            let send_result = photo_sender.send(photo_result);
+            if send_result.is_err() {
+                break;
+            }
         }
     }))
 }
@@ -294,7 +300,7 @@ mod tests {
         cli::Parser,
         http::{Jar, MockHttpResponse, StatusCode},
         sdl::MockSdl,
-        test_helpers::{rand::FakeRandom, MockHttpClient},
+        test_helpers::{MockHttpClient, rand::FakeRandom},
     };
 
     #[test]

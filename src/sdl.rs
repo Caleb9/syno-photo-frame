@@ -2,14 +2,14 @@
 
 pub(crate) use sdl2::pixels::Color;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use sdl2::{
+    EventPump, VideoSubsystem,
     event::Event,
     pixels::PixelFormatEnum,
     render::{BlendMode, Canvas, Texture, TextureCreator},
     video::{DisplayMode, Window, WindowContext},
-    EventPump, VideoSubsystem,
 };
 
 use crate::QuitEvent;

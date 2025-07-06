@@ -4,8 +4,8 @@ pub use clap::Parser;
 
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::{bail, Result};
-use clap::{builder::TypedValueParser as _, ValueEnum};
+use anyhow::{Result, bail};
+use clap::{ValueEnum, builder::TypedValueParser as _};
 
 use crate::http::Url;
 

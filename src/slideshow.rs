@@ -5,7 +5,7 @@ use crate::test_helpers::fake_sleep as thread_sleep;
 #[cfg(not(test))]
 use std::thread::sleep as thread_sleep;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use bytes::Bytes;
 
 use crate::{
@@ -371,8 +371,8 @@ mod tests {
     }
 
     #[test]
-    fn get_next_photo_skips_the_photo_when_cached_dto_is_not_found_because_photo_was_removed_from_album(
-    ) {
+    fn get_next_photo_skips_the_photo_when_cached_dto_is_not_found_because_photo_was_removed_from_album()
+     {
         /* Arrange */
         const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
         const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";

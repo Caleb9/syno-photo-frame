@@ -1,17 +1,17 @@
 use std::sync::OnceLock;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use bytes::Bytes;
 use regex::Regex;
 
 use crate::{
+    LoginError,
     api_client::{
-        immich_client::dto::{Album, AlbumInfo, Asset, AssetsInfo},
         ApiClient, SharingId, SortBy,
+        immich_client::dto::{Album, AlbumInfo, Asset, AssetsInfo},
     },
     cli::SourceSize,
-    http::{read_response, HttpClient, HttpResponse, Url},
-    LoginError,
+    http::{HttpClient, HttpResponse, Url, read_response},
 };
 
 pub struct ImmichApiClient<'a, H> {

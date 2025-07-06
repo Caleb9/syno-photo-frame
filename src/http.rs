@@ -3,10 +3,10 @@
 use std::fmt::Formatter;
 
 pub(crate) use bytes::Bytes;
-pub use reqwest::{blocking::ClientBuilder, cookie::CookieStore};
 pub(crate) use reqwest::{StatusCode, Url};
+pub use reqwest::{blocking::ClientBuilder, cookie::CookieStore};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
 use serde::de::DeserializeOwned;
 
