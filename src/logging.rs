@@ -15,14 +15,14 @@ pub struct LoggingClientDecorator<C> {
 }
 
 impl<C> LoggingClientDecorator<C> {
-    pub fn new(client: C) -> Self {
+    pub const fn new(client: C) -> Self {
         LoggingClientDecorator {
             client,
             level: Level::Debug,
         }
     }
 
-    pub fn with_level(mut self, level: Level) -> Self {
+    pub const fn with_level(mut self, level: Level) -> Self {
         self.level = level;
         self
     }

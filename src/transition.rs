@@ -91,7 +91,7 @@ impl FadeToBlackPhase {
         }
     }
 
-    fn step_alpha(&self, delta: f64) -> f64 {
+    const fn step_alpha(&self, delta: f64) -> f64 {
         const DIFF: f64 = TRANSITION_ALPHA_MAX / (FADE_TO_BLACK_DURATION_SECS / 2f64);
         let diff = delta * DIFF;
         match self {

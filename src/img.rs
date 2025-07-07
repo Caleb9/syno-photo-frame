@@ -235,18 +235,18 @@ impl Dimensions {
         Self { w, h }
     }
 
-    fn diff(self, Dimensions { w, h }: Dimensions) -> (f64, f64) {
+    const fn diff(self, Dimensions { w, h }: Dimensions) -> (f64, f64) {
         (f64::abs(self.w - w), f64::abs(self.h - h))
     }
 
-    fn is_exact_fit_to(self, target: Dimensions) -> bool {
+    const fn is_exact_fit_to(self, target: Dimensions) -> bool {
         let (w_diff, h_diff) = self.diff(target);
         w_diff as u32 == 0 && h_diff as u32 == 0
     }
 
     /// Resize dimensions preserving aspect ratio. The dimensions are scaled to the maximum possible
     /// size that fits within the bounds specified by `new_width` and `new_height`.
-    fn resize(
+    const fn resize(
         self,
         Dimensions {
             w: new_width,
@@ -265,7 +265,7 @@ impl Dimensions {
     }
 
     /// Calculates coordinates of parts of the foreground that will form the background fills.
-    fn background_crops(self, screen_size: Dimensions) -> (Coords, Coords) {
+    const fn background_crops(self, screen_size: Dimensions) -> (Coords, Coords) {
         let screen_to_image_projection = screen_size.resize(self);
         let (w_diff, h_diff) = screen_to_image_projection.diff(self);
         let (bg_x, bg_y) = (w_diff / 2.0, h_diff / 2.0);
@@ -282,35 +282,15 @@ impl Dimensions {
             /* Needs background on left and right. */
             let bg_w = w_diff / 2.0;
             (
-                Coords {
-                    x: bg_x,
-                    y: bg_y,
-                    w: bg_w,
-                    h: screen_h,
-                },
-                Coords {
-                    x: self.w - bg_w,
-                    y: bg_y,
-                    w: bg_w,
-                    h: screen_h,
-                },
+                Coords::new(bg_x, bg_y, bg_w, screen_h),
+                Coords::new(self.w - bg_w, bg_y, bg_w, screen_h),
             )
         } else {
             /* Needs background on top and bottom .*/
             let bg_h = h_diff / 2.0;
             (
-                Coords {
-                    x: bg_x,
-                    y: bg_y,
-                    w: screen_w,
-                    h: bg_h,
-                },
-                Coords {
-                    x: bg_x,
-                    y: self.h - bg_h,
-                    w: screen_w,
-                    h: bg_h,
-                },
+                Coords::new(bg_x, bg_y, screen_w, bg_h),
+                Coords::new(bg_x, self.h - bg_h, screen_w, bg_h),
             )
         }
     }
@@ -322,6 +302,12 @@ struct Coords {
     y: f64,
     w: f64,
     h: f64,
+}
+
+impl Coords {
+    const fn new(x: f64, y: f64, w: f64, h: f64) -> Self {
+        Coords { x, y, w, h }
+    }
 }
 
 #[cfg(test)]

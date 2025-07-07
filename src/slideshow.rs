@@ -28,7 +28,7 @@ pub struct Slideshow<A: ApiClient, R> {
 }
 
 impl<A: ApiClient, R: Random> Slideshow<A, R> {
-    pub fn new(api_client: A, random: R) -> Self {
+    pub const fn new(api_client: A, random: R) -> Self {
         Self {
             api_client,
             random,
@@ -39,17 +39,17 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
         }
     }
 
-    pub fn with_ordering(mut self, order: Order) -> Self {
+    pub const fn with_ordering(mut self, order: Order) -> Self {
         self.order = order;
         self
     }
 
-    pub fn with_random_start(mut self, random_start: bool) -> Self {
+    pub const fn with_random_start(mut self, random_start: bool) -> Self {
         self.random_start = random_start;
         self
     }
 
-    pub fn with_source_size(mut self, size: SourceSize) -> Self {
+    pub const fn with_source_size(mut self, size: SourceSize) -> Self {
         self.source_size = size;
         self
     }
@@ -80,7 +80,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
         }
     }
 
-    fn slideshow_ended(&self) -> bool {
+    const fn slideshow_ended(&self) -> bool {
         self.photo_display_sequence.is_empty()
     }
 
