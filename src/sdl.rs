@@ -155,7 +155,7 @@ pub fn create_canvas(video: &VideoSubsystem, (w, h): (u32, u32)) -> Result<Canva
 pub fn create_texture(
     texture_creator: &TextureCreator<WindowContext>,
     (w, h): (u32, u32),
-) -> Result<Texture> {
+) -> Result<Texture<'_>> {
     let mut texture = texture_creator.create_texture_static(PixelFormatEnum::RGB24, w, h)?;
     texture.set_blend_mode(BlendMode::Blend);
     Ok(texture)
