@@ -264,7 +264,7 @@ where
 
 fn load_image_from_memory(bytes: &[u8]) -> Result<DynamicImage> {
     img::load_from_memory(bytes)
-        /* Synology Photos API may respond with a http OK code and a JSON containing an
+        /* Synology Photos API may respond with an http OK code and a JSON containing an
          * error instead of image bytes in the response body. Log such responses for
          * debugging. */
         .or_else(|e| {
