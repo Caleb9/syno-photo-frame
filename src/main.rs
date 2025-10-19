@@ -8,7 +8,6 @@ use syno_photo_frame::{
     self, LoginError, QuitEvent, RandomImpl,
     cli::{Cli, Parser},
     env::EnvImpl,
-    error::AnyhowErrorMapper,
     http::ClientBuilder,
     logging::LoggingClientDecorator,
     sdl::{self, SdlWrapper},
@@ -50,12 +49,12 @@ fn init_and_run() -> Result<()> {
 
     /* SDL */
     let sdl = sdl::init()?;
-    let video = sdl.video().map_err_to_anyhow()?;
+    let video = sdl.video()?;
     let display_size = sdl::display_size(&video)?;
-    let canvas = sdl::create_canvas(&video, display_size)?;
+    let canvas = sdl::create_canvas(&sdl, display_size)?;
     let texture_creator = canvas.texture_creator();
 
-    let events = sdl.event_pump().map_err_to_anyhow()?;
+    let events = sdl.event_pump()?;
 
     let ttf = sdl::init_ttf()?;
 

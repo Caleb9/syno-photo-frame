@@ -1,19 +1,19 @@
 //! Rendering
 
-pub(crate) use sdl2::{pixels::Color, rect::Rect};
+pub(crate) use sdl3::{pixels::Color, rect::Rect};
 
-use anyhow::Result;
-use sdl2::{
+use anyhow::{Result, anyhow};
+
+use sdl3::{
     EventPump, VideoSubsystem,
     event::Event,
-    gfx::rotozoom::RotozoomSurface,
-    pixels::PixelFormatEnum,
+    iostream::IOStream,
+    pixels::PixelFormat,
     render::{BlendMode, Canvas, Texture, TextureCreator},
-    rwops::RWops,
     video::{DisplayMode, Window, WindowContext},
 };
 
-use crate::{QuitEvent, cli::Rotation, error::AnyhowErrorMapper, info_box};
+use crate::{QuitEvent, cli::Rotation, info_box};
 
 /// Isolates [sdl2::Sdl] context for testing
 #[cfg_attr(test, mockall::automock)]
@@ -59,9 +59,9 @@ pub struct SdlWrapper<'a> {
 
 struct Fonts<'a> {
     /// Foreground font
-    fill: sdl2::ttf::Font<'a, 'a>,
+    fill: sdl3::ttf::Font<'a>,
     /// Border / outline font
-    stroke: sdl2::ttf::Font<'a, 'a>,
+    stroke: sdl3::ttf::Font<'a>,
     stroke_outline_width: u16,
 }
 
@@ -83,9 +83,8 @@ impl Sdl for SdlWrapper<'_> {
     }
 
     fn copy_texture_to_canvas(&mut self, index: TextureIndex) -> Result<()> {
-        self.canvas
-            .copy(&self.textures[self.texture_index(index)], None, None)
-            .map_err_to_anyhow()
+        Ok(self.canvas
+            .copy(&self.textures[self.texture_index(index)], None, None)?)
     }
 
     fn swap_textures(&mut self) {
@@ -94,21 +93,22 @@ impl Sdl for SdlWrapper<'_> {
 
     fn fill_canvas(&mut self, color: Color) -> Result<()> {
         self.canvas.set_draw_color(color);
-        self.canvas.fill_rect(None).map_err_to_anyhow()
+        Ok(self.canvas.fill_rect(None)?)
     }
 
     fn present_canvas(&mut self) {
-        self.canvas.present()
+        if !self.canvas.present() {
+            panic!("{:?}", sdl3::get_error())
+        }
     }
 
     fn handle_quit_event(&mut self) -> Result<(), QuitEvent> {
         let exit_requested = self.events.poll_iter().any(|e| {
             if let event @ (Event::Quit { .. } | Event::AppTerminating { .. }) = e {
                 log::debug!("SDL event received: {event:?}");
-                true
-            } else {
-                false
+                return true;
             }
+            false
         });
         if exit_requested {
             Err(QuitEvent)
@@ -133,23 +133,21 @@ impl Sdl for SdlWrapper<'_> {
         );
         let mut stroke_surface = self.fonts.stroke.render(text).blended(Color::BLACK)?;
         fill_surface
-            .blit(None, &mut stroke_surface, dst_rect)
-            .map_err_to_anyhow()?;
+            .blit(None, &mut stroke_surface, dst_rect)?;
         let turns = match rotation {
             Rotation::D0 => 0,
             Rotation::D90 => 1,
             Rotation::D180 => 2,
             Rotation::D270 => 3,
         };
-        let rotated_surface = stroke_surface.rotate_90deg(turns).map_err_to_anyhow()?;
+        let rotated_surface = stroke_surface;//.rotate_90deg(turns).map_err_to_anyhow()?;
         let info_box_texture = self
             .texture_creator
             .create_texture_from_surface(&rotated_surface)?;
         let bottom_left =
             info_box::get_text_box_dst_rect(self.size, rotated_surface.size(), rotation)?;
-        self.canvas
-            .copy(&info_box_texture, None, bottom_left)
-            .map_err_to_anyhow()
+        Ok(self.canvas
+            .copy(&info_box_texture, None, bottom_left)?)
     }
 }
 
@@ -158,7 +156,7 @@ impl<'a> SdlWrapper<'a> {
         canvas: Canvas<Window>,
         texture_creator: &'a TextureCreator<WindowContext>,
         events: EventPump,
-        ttf: &'a sdl2::ttf::Sdl2TtfContext,
+        ttf: &'a sdl3::ttf::Sdl3TtfContext,
     ) -> Result<Self> {
         let screen_size = canvas.window().size();
         let (w, _) = screen_size;
@@ -192,33 +190,33 @@ impl<'a> SdlWrapper<'a> {
     }
 }
 
-/// Initializes SDL video subsystem.
-/// **Must be called before using any other function in this module**
-pub fn init() -> Result<sdl2::Sdl> {
-    sdl2::init().map_err_to_anyhow()
+/// Initializes SDL. **Must be called before using any other function in this module**
+pub fn init() -> Result<sdl3::Sdl> {
+    sdl3::init().map_err(|s| anyhow!(s))
 }
 
-pub fn init_ttf() -> Result<sdl2::ttf::Sdl2TtfContext> {
-    sdl2::ttf::init().map_err_to_anyhow()
+pub fn init_ttf() -> Result<sdl3::ttf::Sdl3TtfContext> {
+    Ok(sdl3::ttf::init()?)
 }
 
 /// Returns screen width and height
 pub fn display_size(video: &VideoSubsystem) -> Result<(u32, u32)> {
     let DisplayMode {
         format: _, w, h, ..
-    } = video.current_display_mode(0).map_err_to_anyhow()?;
+    } = video.get_primary_display()?.get_mode()?;
     Ok((u32::try_from(w)?, u32::try_from(h)?))
 }
 
 /// Sets up a renderer
-pub fn create_canvas(video: &VideoSubsystem, (w, h): (u32, u32)) -> Result<Canvas<Window>> {
+pub fn create_canvas(sdl: &sdl3::Sdl, (w, h): (u32, u32)) -> Result<Canvas<Window>> {
+    let video = sdl.video()?;
     let window = video
         .window("syno-photo-frame", w, h)
         .borderless()
         .build()?;
     /* Seems this needs to be set _after_ window has been created. */
-    video.sdl().mouse().show_cursor(false);
-    let mut canvas = window.into_canvas().present_vsync().build()?;
+    sdl.mouse().show_cursor(false);
+    let mut canvas = window.into_canvas();
     /* Transition effects draw semi-transparent box on canvas */
     canvas.set_blend_mode(BlendMode::Blend);
     Ok(canvas)
@@ -229,22 +227,20 @@ fn create_texture(
     texture_creator: &TextureCreator<WindowContext>,
     (w, h): (u32, u32),
 ) -> Result<Texture<'_>> {
-    let mut texture = texture_creator.create_texture_static(PixelFormatEnum::RGB24, w, h)?;
+    let mut texture = texture_creator.create_texture_static(PixelFormat::RGB24, w, h)?;
     texture.set_blend_mode(BlendMode::Blend);
     Ok(texture)
 }
 
 fn load_font(
-    ttf: &'_ sdl2::ttf::Sdl2TtfContext,
+    ttf: &'_ sdl3::ttf::Sdl3TtfContext,
     screen_size: (u32, u32),
     outline_width: Option<u16>,
-) -> Result<sdl2::ttf::Font<'_, '_>> {
+) -> Result<sdl3::ttf::Font<'_>> {
     let mut font = ttf
-        .load_font_from_rwops(
-            RWops::from_bytes(crate::asset::FONT_BYTES).map_err_to_anyhow()?,
-            info_box::get_font_point_size(screen_size),
-        )
-        .map_err_to_anyhow()?;
+        .load_font_from_iostream(IOStream::from_bytes(crate::asset::FONT_BYTES)?,
+            info_box::get_font_point_size(screen_size) as f32,
+        )?;
     if let Some(outline_width) = outline_width {
         font.set_outline_width(outline_width);
     }

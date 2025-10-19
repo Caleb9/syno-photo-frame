@@ -36,7 +36,7 @@
 FROM rust:trixie AS build
 
 RUN DEBIAN_FRONTEND=noninteractive apt update && \
-    apt install -y libsdl2-dev libsdl2-gfx-dev libsdl2-ttf-dev libssl-dev lintian && \
+    apt install -y cmake libsdl3-dev libsdl3-ttf-dev libssl-dev lintian && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
