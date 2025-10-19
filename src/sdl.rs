@@ -1,13 +1,13 @@
 //! Rendering
 
-pub(crate) use sdl2::pixels::Color;
+pub(crate) use sdl3::pixels::Color;
 
 use anyhow::{Result, anyhow};
 
-use sdl2::{
+use sdl3::{
     EventPump, VideoSubsystem,
     event::Event,
-    pixels::PixelFormatEnum,
+    pixels::PixelFormat,
     render::{BlendMode, Canvas, Texture, TextureCreator},
     video::{DisplayMode, Window, WindowContext},
 };
@@ -67,17 +67,18 @@ impl Sdl for SdlWrapper<'_> {
     }
 
     fn present_canvas(&mut self) {
-        self.canvas.present()
+        if !self.canvas.present() {
+            panic!("{:?}", sdl3::get_error())
+        }
     }
 
     fn handle_quit_event(&mut self) -> Result<(), QuitEvent> {
         let exit_requested = self.events.poll_iter().any(|e| {
             if let event @ (Event::Quit { .. } | Event::AppTerminating { .. }) = e {
                 log::debug!("SDL event received: {event:?}");
-                true
-            } else {
-                false
+                return true;
             }
+            false
         });
         if exit_requested {
             Err(QuitEvent)
@@ -121,31 +122,29 @@ impl<'a> SdlWrapper<'a> {
     }
 }
 
-/// Initializes SDL video subsystem. **Must be called before using any other function in this module**
-pub fn init_video() -> Result<VideoSubsystem> {
-    sdl2::init()
-        .map_err(|s| anyhow!(s))?
-        .video()
-        .map_err(|s| anyhow!(s))
+/// Initializes SDL. **Must be called before using any other function in this module**
+pub fn init() -> Result<sdl3::Sdl> {
+    sdl3::init().map_err(|s| anyhow!(s))
 }
 
 /// Returns screen width and height
 pub fn display_size(video: &VideoSubsystem) -> Result<(u32, u32)> {
     let DisplayMode {
         format: _, w, h, ..
-    } = video.current_display_mode(0).map_err(|s| anyhow!(s))?;
+    } = video.get_primary_display()?.get_mode()?;
     Ok((u32::try_from(w)?, u32::try_from(h)?))
 }
 
 /// Sets up a renderer
-pub fn create_canvas(video: &VideoSubsystem, (w, h): (u32, u32)) -> Result<Canvas<Window>> {
+pub fn create_canvas(sdl: &sdl3::Sdl, (w, h): (u32, u32)) -> Result<Canvas<Window>> {
+    let video = sdl.video()?;
     let window = video
         .window("syno-photo-frame", w, h)
         .borderless()
         .build()?;
     /* Seems this needs to be set _after_ window has been created. */
-    video.sdl().mouse().show_cursor(false);
-    let mut canvas = window.into_canvas().present_vsync().build()?;
+    sdl.mouse().show_cursor(false);
+    let mut canvas = window.into_canvas();
     /* Transition effects draw semi-transparent box on canvas */
     canvas.set_blend_mode(BlendMode::Blend);
     Ok(canvas)
@@ -156,7 +155,7 @@ pub fn create_texture(
     texture_creator: &TextureCreator<WindowContext>,
     (w, h): (u32, u32),
 ) -> Result<Texture<'_>> {
-    let mut texture = texture_creator.create_texture_static(PixelFormatEnum::RGB24, w, h)?;
+    let mut texture = texture_creator.create_texture_static(PixelFormat::RGB24, w, h)?;
     texture.set_blend_mode(BlendMode::Blend);
     Ok(texture)
 }

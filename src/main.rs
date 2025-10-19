@@ -47,15 +47,16 @@ fn init_and_run() -> Result<()> {
         .build()?;
 
     /* SDL */
-    let video = sdl::init_video()?;
+    let sdl = sdl::init()?;
+    let video = sdl.video()?;
     let display_size = sdl::display_size(&video)?;
-    let canvas = sdl::create_canvas(&video, display_size)?;
+    let canvas = sdl::create_canvas(&sdl, display_size)?;
     let texture_creator = canvas.texture_creator();
     let textures = [
         sdl::create_texture(&texture_creator, display_size)?,
         sdl::create_texture(&texture_creator, display_size)?,
     ];
-    let events = video.sdl().event_pump().map_err(|s| anyhow!(s))?;
+    let events = sdl.event_pump().map_err(|s| anyhow!(s))?;
     let mut sdl = SdlWrapper::new(canvas, textures, events);
 
     /* This crate version */
