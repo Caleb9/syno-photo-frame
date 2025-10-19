@@ -112,12 +112,12 @@ on your Pi.
 [Releases](https://github.com/Caleb9/syno-photo-frame/releases)
 contains pre-built .deb packages for arm64 Linux architecture, which
 should work on Raspberry Pi 3 and up, as well as Zero 2 (assuming the
-64bit version of Raspbian OS *Bookworm* is installed).
+64bit version of Raspbian OS *Bookworm* or newer is installed).
 
 - Check the architecture with `dpkg --print-architecture`; it should
   print "arm64".
 - Check the installed version of Debian with `lsb_release -c` and make
-  sure it says "bookworm".
+  sure it says "bookworm" or "trixie".
 
 **For other platforms (including older versions of Debian, such as
 "bullseye"), you must build the project from source - see [Option 2:

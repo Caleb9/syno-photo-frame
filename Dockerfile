@@ -33,7 +33,7 @@
 # for RPi Zero seems to be a native compilation, which is VERY slow.
 ##
 
-FROM rust:bookworm AS build
+FROM rust:trixie AS build
 
 RUN DEBIAN_FRONTEND=noninteractive apt update && \
     apt install -y libsdl2-dev libssl-dev lintian && \
