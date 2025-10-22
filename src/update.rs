@@ -48,16 +48,16 @@ impl UpdateNotification {
 
 pub fn check_for_updates_thread<'a, C: HttpClient + Sync>(
     client: &'a C,
-    installed_version: &'a str,
+    this_crate_version: &'a str,
     thread_scope: &'a Scope<'a, '_>,
     update_check_sender: SyncSender<bool>,
 ) -> ScopedJoinHandle<'a, ()> {
     thread_scope.spawn(move || {
         match api_crates::get_latest_version(client) {
             Ok(remote_crate) => {
-                if remote_crate.vers != installed_version {
+                if remote_crate.vers != this_crate_version {
                     log::info!(
-                        "New version is available ({installed_version} -> {})",
+                        "New version is available ({this_crate_version} -> {})",
                         remote_crate.vers
                     );
                     update_check_sender.try_send(true).unwrap_or_default();

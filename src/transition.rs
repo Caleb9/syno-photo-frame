@@ -13,6 +13,8 @@ use crate::{
 
 const TRANSITION_ALPHA_MIN: f64 = 0_f64;
 const TRANSITION_ALPHA_MAX: f64 = 255_f64;
+const TRANSITION_ALPHA_MAX_U8: u8 = 255;
+
 // Possibly parametrize this and take command line argument to control length of the transition
 const FADE_TO_BLACK_DURATION_SECS: f64 = 1_f64;
 const CROSSFADE_DURATION_SECS: f64 = 1_f64;
@@ -20,14 +22,13 @@ const CROSSFADE_DURATION_SECS: f64 = 1_f64;
 impl Transition {
     pub fn play(&self, sdl: &mut impl Sdl) -> Result<()> {
         match self {
-            Transition::Crossfade => {
-                self.crossfade(sdl)?;
-            }
+            Transition::Crossfade => self.crossfade(sdl)?,
             Transition::FadeToBlack => {
                 self.fade_to_black(sdl, FadeToBlackPhase::Out)?;
                 self.fade_to_black(sdl, FadeToBlackPhase::In)?;
             }
             Transition::None => {
+                sdl.clear_canvas();
                 sdl.copy_texture_to_canvas(TextureIndex::Next)?;
                 sdl.present_canvas();
             }
@@ -35,6 +36,7 @@ impl Transition {
         Ok(())
     }
 
+    /// Returns error (QuitEvent) if exit event occurred
     fn crossfade(&self, sdl: &mut impl Sdl) -> Result<()> {
         let mut delta;
         let mut alpha = TRANSITION_ALPHA_MIN;
@@ -44,16 +46,22 @@ impl Transition {
             sdl.handle_quit_event()?;
             delta = (Instant::now() - last).as_secs_f64();
             last = Instant::now();
+            sdl.clear_canvas();
             sdl.copy_texture_to_canvas(TextureIndex::Current)?;
             alpha += delta * DIFF;
             sdl.set_texture_alpha(alpha.round() as u8, TextureIndex::Next);
             sdl.copy_texture_to_canvas(TextureIndex::Next)?;
             sdl.present_canvas();
         }
+        /* Workaround ghosting artifacts on RPi Zero 2, an extra copy of full opacity texture to the
+         * canvas */
+        sdl.clear_canvas();
+        sdl.set_texture_alpha(TRANSITION_ALPHA_MAX_U8, TextureIndex::Next);
+        sdl.copy_texture_to_canvas(TextureIndex::Next)?;
         Ok(())
     }
 
-    /// Returns false if exit event occurred
+    /// Returns error (QuitEvent) if exit event occurred
     fn fade_to_black(&self, sdl: &mut impl Sdl, phase: FadeToBlackPhase) -> Result<()> {
         let mut delta;
         let mut alpha = phase.init_alpha();
@@ -63,9 +71,17 @@ impl Transition {
             delta = (Instant::now() - last).as_secs_f64();
             last = Instant::now();
             alpha += phase.step_alpha(delta);
+            sdl.clear_canvas();
             sdl.copy_texture_to_canvas(phase.texture_index())?;
             sdl.fill_canvas(Color::RGBA(0, 0, 0, alpha.round() as u8))?;
             sdl.present_canvas();
+        }
+        /* Workaround ghosting artifacts on RPi Zero 2. In case of fade-to-black this is probably
+         * unnoticeable. */
+        sdl.clear_canvas();
+        if let FadeToBlackPhase::In = phase {
+            sdl.set_texture_alpha(TRANSITION_ALPHA_MAX_U8, TextureIndex::Next);
+            sdl.copy_texture_to_canvas(TextureIndex::Next)?;
         }
         Ok(())
     }
@@ -133,6 +149,10 @@ mod tests {
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
         for texture_index in [&TextureIndex::Current, &TextureIndex::Next] {
             for _ in 0..EXPECTED_PHASE_ITERATIONS {
+                sdl.expect_clear_canvas()
+                    .once()
+                    .in_sequence(&mut sdl_seq)
+                    .return_const(());
                 sdl.expect_copy_texture_to_canvas()
                     .withf(move |index| index == texture_index)
                     .once()
@@ -151,7 +171,20 @@ mod tests {
                         MockClock::advance(frame_duration)
                     });
             }
+            sdl.expect_clear_canvas()
+                .once()
+                .in_sequence(&mut sdl_seq)
+                .return_const(());
         }
+        /* Ghosting workaround */
+        sdl.expect_set_texture_alpha()
+            .once()
+            .in_sequence(&mut sdl_seq)
+            .return_const(());
+        sdl.expect_copy_texture_to_canvas()
+            .once()
+            .in_sequence(&mut sdl_seq)
+            .returning(|_| Ok(()));
 
         let result = Transition::FadeToBlack.play(&mut sdl);
 
@@ -171,6 +204,10 @@ mod tests {
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
         for _ in 0..EXPECTED_ITERATIONS {
+            sdl.expect_clear_canvas()
+                .once()
+                .in_sequence(&mut sdl_seq)
+                .return_const(());
             sdl.expect_copy_texture_to_canvas()
                 .withf(|index| index == &TextureIndex::Current)
                 .once()
@@ -194,6 +231,20 @@ mod tests {
                     MockClock::advance(frame_duration)
                 });
         }
+        /* Ghosting workaround */
+        sdl.expect_clear_canvas()
+            .once()
+            .in_sequence(&mut sdl_seq)
+            .return_const(());
+        sdl.expect_set_texture_alpha()
+            .once()
+            .in_sequence(&mut sdl_seq)
+            .return_const(());
+        sdl.expect_copy_texture_to_canvas()
+            .withf(|index| index == &TextureIndex::Next)
+            .once()
+            .in_sequence(&mut sdl_seq)
+            .return_once(|_| Ok(()));
 
         let result = Transition::Crossfade.play(&mut sdl);
 
@@ -210,6 +261,8 @@ mod tests {
             let mut sdl = MockSdl::default();
             sdl.expect_handle_quit_event().returning(|| Ok(()));
             let frame_duration = Duration::from_secs_f64(1_f64 / fps);
+            sdl.expect_clear_canvas().return_const(());
+            sdl.expect_set_texture_alpha().return_const(());
             sdl.expect_copy_texture_to_canvas().returning(|_| Ok(()));
             sdl.expect_fill_canvas().returning(|_| Ok(()));
             sdl.expect_present_canvas()
@@ -232,6 +285,7 @@ mod tests {
             let mut sdl = MockSdl::default();
             sdl.expect_handle_quit_event().returning(|| Ok(()));
             let frame_duration = Duration::from_secs_f64(1_f64 / fps);
+            sdl.expect_clear_canvas().return_const(());
             sdl.expect_copy_texture_to_canvas().returning(|_| Ok(()));
             sdl.expect_set_texture_alpha().return_const(());
             sdl.expect_present_canvas()
@@ -249,6 +303,8 @@ mod tests {
     fn fade_to_black_play_mutates_alpha() {
         let mut sdl = MockSdl::default();
         sdl.expect_handle_quit_event().returning(|| Ok(()));
+        sdl.expect_clear_canvas().return_const(());
+        sdl.expect_set_texture_alpha().return_const(());
         sdl.expect_copy_texture_to_canvas().returning(|_| Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
@@ -288,6 +344,7 @@ mod tests {
     fn crossfade_play_mutates_alpha() {
         let mut sdl = MockSdl::default();
         sdl.expect_handle_quit_event().returning(|| Ok(()));
+        sdl.expect_clear_canvas().return_const(());
         sdl.expect_copy_texture_to_canvas().returning(|_| Ok(()));
         const FPS: f64 = 30_f64;
         let frame_duration = Duration::from_secs_f64(1_f64 / FPS);
@@ -318,6 +375,8 @@ mod tests {
         }
         sdl.expect_present_canvas()
             .returning(move || MockClock::advance(frame_duration));
+        /* Ghosting workaround */
+        sdl.expect_set_texture_alpha().return_const(());
 
         Transition::Crossfade.play(&mut sdl).unwrap();
 

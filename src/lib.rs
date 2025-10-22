@@ -18,12 +18,15 @@ use std::{thread::sleep as thread_sleep, time::Instant};
 use {mock_instant::Instant, test_helpers::fake_sleep as thread_sleep};
 
 use anyhow::{Result, bail};
+use chrono::Locale;
 
 use crate::{
     api_client::{ApiClient, immich_client::ImmichApiClient, syno_client::SynoApiClient},
     cli::{Backend, Cli},
+    env::Env,
     http::{CookieStore, HttpClient},
     img::{DynamicImage, Framed},
+    metadata::FromEnv,
     rand::Random,
     sdl::{Sdl, TextureIndex},
     slideshow::Slideshow,
@@ -31,6 +34,8 @@ use crate::{
 };
 
 pub mod cli;
+pub mod env;
+pub mod error;
 pub mod http;
 pub mod logging;
 pub mod sdl;
@@ -39,6 +44,8 @@ mod api_client;
 mod api_crates;
 mod asset;
 mod img;
+mod info_box;
+mod metadata;
 mod rand;
 mod slideshow;
 mod transition;
@@ -53,7 +60,8 @@ pub fn run<H, R>(
     (http_client, cookie_store): (&H, &impl CookieStore),
     sdl: &mut impl Sdl,
     random: R,
-    installed_version: &str,
+    this_crate_version: &str,
+    env: &impl Env,
 ) -> Result<()>
 where
     H: HttpClient + Sync,
@@ -66,7 +74,7 @@ where
         if !cli.disable_update_check {
             update::check_for_updates_thread(
                 http_client,
-                installed_version,
+                this_crate_version,
                 thread_scope,
                 update_check_sender,
             );
@@ -79,6 +87,7 @@ where
             random,
             update_check_receiver,
             current_image,
+            env,
         )
     })
 }
@@ -109,6 +118,7 @@ fn select_backend_and_start_slideshow<H, R>(
     random: R,
     update_check_receiver: Receiver<bool>,
     current_image: DynamicImage,
+    env: &impl Env,
 ) -> Result<()>
 where
     H: HttpClient + Sync,
@@ -128,6 +138,7 @@ where
             random,
             update_check_receiver,
             current_image,
+            env,
         ),
         Backend::Immich => slideshow_loop(
             cli,
@@ -136,6 +147,7 @@ where
             random,
             update_check_receiver,
             current_image,
+            env,
         ),
         Backend::Auto => unreachable!(),
     }
@@ -148,6 +160,7 @@ fn slideshow_loop<A, R>(
     random: R,
     update_check_receiver: Receiver<bool>,
     mut current_image: DynamicImage,
+    env: &impl Env,
 ) -> Result<()>
 where
     A: ApiClient + Send,
@@ -168,6 +181,7 @@ where
             random,
             thread_scope,
             photo_sender,
+            env,
         )?;
 
         let loop_result = loop {
@@ -187,7 +201,7 @@ where
             }
 
             if let Ok(next_photo_result) = photo_receiver.try_recv() {
-                let mut next_image = match next_photo_result {
+                let mut next_photo = match next_photo_result {
                     Ok(photo) => photo,
                     Err(error) if error.is::<LoginError>() => {
                         /* Login error terminates the main thread loop */
@@ -196,19 +210,20 @@ where
                     Err(error) => {
                         /* Any non-login error gets logged and an error screen is displayed. */
                         log::error!("{error}");
-                        asset::error_screen(screen_size, cli.rotation)?
+                        DynamicImagePhoto::error(screen_size, cli.rotation)?
                     }
                 };
                 if update_notification.is_visible {
-                    update_notification.overlay(&mut next_image);
+                    update_notification.overlay(&mut next_photo.image);
                 }
-                sdl.update_texture(next_image.as_bytes(), TextureIndex::Next)?;
+                sdl.update_texture(next_photo.image.as_bytes(), TextureIndex::Next)?;
                 cli.transition.play(sdl)?;
+                overlay_info_box(sdl, &next_photo, cli)?;
 
                 last_change = Instant::now();
 
                 sdl.swap_textures();
-                current_image = next_image;
+                current_image = next_photo.image;
             } else {
                 /* next photo is still being fetched and processed, we have to wait for it */
                 thread_sleep(LOOP_SLEEP_DURATION);
@@ -228,7 +243,8 @@ fn photo_fetcher_thread<'a, A, R>(
     screen_size: (u32, u32),
     random: R,
     thread_scope: &'a Scope<'a, '_>,
-    photo_sender: SyncSender<Result<DynamicImage>>,
+    photo_sender: SyncSender<Result<DynamicImagePhoto>>,
+    env: &impl Env,
 ) -> Result<ScopedJoinHandle<'a, ()>>
 where
     A: ApiClient + Send + 'a,
@@ -237,22 +253,24 @@ where
     if !api_client.is_logged_in() {
         api_client.login()?;
     }
-    let mut slideshow = Slideshow::new(api_client, random)
+    let mut slideshow = Slideshow::new(api_client, random, Locale::from_env(env))
         .with_ordering(cli.order)
         .with_random_start(cli.random_start)
         .with_source_size(cli.source_size);
     Ok(thread_scope.spawn(move || {
         loop {
-            let photo_result = slideshow
-                .get_next_photo()
-                .and_then(|bytes| load_image_from_memory(&bytes))
-                .map(|image| {
-                    image.fit_to_screen_and_add_background(
-                        screen_size,
-                        cli.rotation,
-                        cli.background,
+            let photo_result = slideshow.get_next_photo().and_then(|photo| {
+                load_image_from_memory(&photo.bytes).map(|image| {
+                    DynamicImagePhoto::new(
+                        image.fit_to_screen_and_add_background(
+                            screen_size,
+                            cli.rotation,
+                            cli.background,
+                        ),
+                        photo.info,
                     )
-                });
+                })
+            });
             /* Blocks until photo is received by the main thread */
             let send_result = photo_sender.send(photo_result);
             if send_result.is_err() {
@@ -277,6 +295,32 @@ fn load_image_from_memory(bytes: &[u8]) -> Result<DynamicImage> {
         })
 }
 
+struct DynamicImagePhoto {
+    image: DynamicImage,
+    info: String,
+}
+
+impl DynamicImagePhoto {
+    fn new(image: DynamicImage, info: String) -> Self {
+        Self { image, info }
+    }
+
+    fn error(screen_size: (u32, u32), rotation: cli::Rotation) -> Result<Self> {
+        Ok(Self {
+            image: asset::error_screen(screen_size, rotation)?,
+            info: "".to_string(),
+        })
+    }
+}
+
+fn overlay_info_box(sdl: &mut impl Sdl, photo: &DynamicImagePhoto, cli: &Cli) -> Result<()> {
+    if cli.display_photo_info {
+        sdl.render_info_box(&photo.info, cli.rotation)?;
+        sdl.present_canvas();
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 pub struct QuitEvent;
 
@@ -298,6 +342,7 @@ mod tests {
     use crate::{
         api_client::syno_client::Login,
         cli::Parser,
+        env::MockEnv,
         http::{Jar, MockHttpResponse, StatusCode},
         sdl::MockSdl,
         test_helpers::{MockHttpClient, rand::FakeRandom},
@@ -349,6 +394,7 @@ mod tests {
             &mut sdl_stub,
             FakeRandom::default(),
             "1.2.3",
+            &MockEnv::default(),
         );
 
         assert!(result.is_err_and(|e| e.is::<LoginError>()));
@@ -387,6 +433,7 @@ mod tests {
             &mut sdl_stub,
             FakeRandom::default(),
             "1.2.3",
+            &MockEnv::default(),
         );
 
         assert!(result.is_err_and(|e| e.is::<LoginError>()));
@@ -445,6 +492,7 @@ mod tests {
         let mut sdl_stub = MockSdl::new();
         {
             sdl_stub.expect_size().return_const((198, 102));
+            sdl_stub.expect_clear_canvas().return_const(());
             sdl_stub
                 .expect_copy_texture_to_canvas()
                 .returning(|_| Ok(()));
@@ -479,6 +527,7 @@ mod tests {
             &mut sdl_stub,
             FakeRandom::default(),
             "1.2.3",
+            &MockEnv::default().with_default_expectations(),
         );
 
         /* If failed request bubbled up its error and broke the main slideshow loop, we would
@@ -540,6 +589,7 @@ mod tests {
         let mut sdl_stub = MockSdl::new();
         {
             sdl_stub.expect_size().return_const((198, 102));
+            sdl_stub.expect_clear_canvas().return_const(());
             sdl_stub
                 .expect_copy_texture_to_canvas()
                 .returning(|_| Ok(()));
@@ -574,6 +624,7 @@ mod tests {
             &mut sdl_stub,
             FakeRandom::default(),
             "1.2.3",
+            &MockEnv::default().with_default_expectations(),
         );
 
         /* If failed request bubbled up its error and broke the main slideshow loop, we would
@@ -589,6 +640,13 @@ mod tests {
             self.expect_copy_texture_to_canvas().returning(|_| Ok(()));
             self.expect_fill_canvas().returning(|_| Ok(()));
             self.expect_present_canvas().return_const(());
+            self
+        }
+    }
+
+    impl MockEnv {
+        pub fn with_default_expectations(mut self) -> Self {
+            self.expect_var().returning(|_| Ok("en_GB".to_string()));
             self
         }
     }

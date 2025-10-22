@@ -6,14 +6,16 @@ use std::{
 
 use anyhow::{Result, anyhow, bail};
 use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::Deserialize;
 use syno_api::dto::{ApiResponse, List};
 
 use crate::{
-    api_client::{ApiClient, LoginError, SharingId, SortBy},
+    api_client::{ApiClient, LoginError, Metadata, SharingId, SortBy},
     cli::SourceSize,
     http::{CookieStore, HttpClient, HttpResponse, InvalidHttpResponse, Url, read_response},
+    metadata::Location,
 };
 
 pub struct SynoApiClient<'a, H, C> {
@@ -65,7 +67,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
             ("api", syno_api::foto::browse::item::API),
             ("method", "list"),
             ("version", "4"),
-            ("additional", "[\"thumbnail\"]"),
+            ("additional", "[\"thumbnail\", \"address\"]"),
             ("offset", "0"),
             ("limit", "5000"), // Limit imposed by API
             ("sort_by", &sort_by.to_string()),
@@ -77,6 +79,10 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
             Some(("X-SYNO-SHARING", &self.sharing_id)),
         )?;
         read_response(response, |response| {
+            /* For ad-hoc discovery of API responses */
+            // let text = response.text()?;
+            // dbg!(&text);
+            // let dto = serde_json::from_str::<ApiResponse<List<Self::Photo>>>(&text)?;
             let dto = response.json::<ApiResponse<List<Self::Photo>>>()?;
             if !dto.success {
                 bail!(InvalidApiResponse("list", dto.error.unwrap().code))
@@ -138,6 +144,47 @@ impl<'a, H, C> SynoApiClient<'a, H, C> {
     }
 }
 
+impl Metadata for syno_api::foto::browse::item::dto::Item {
+    fn date(&self) -> DateTime<Utc> {
+        match self.time.try_into() {
+            Ok(time) => DateTime::from_timestamp(time, 0).unwrap_or_default(),
+            Err(e) => {
+                log::warn!("failed to convert time to i64: {}", e);
+                DateTime::default()
+            }
+        }
+    }
+
+    fn location(&self) -> Location {
+        let address = self
+            .additional
+            .as_ref()
+            .and_then(|additional| additional.address.as_ref());
+        if let Some(address) = address {
+            /* Try finding the most specific location */
+            let area = [
+                &address.village,
+                &address.town,
+                &address.city,
+                &address.county,
+                &address.state,
+            ]
+            .iter()
+            .find(|s| !s.is_empty())
+            .cloned()
+            .cloned();
+            let country = if !address.country.is_empty() {
+                Some(address.country.clone())
+            } else {
+                None
+            };
+            Location::new(area, country)
+        } else {
+            Default::default()
+        }
+    }
+}
+
 /// Returns Synology Photos API URL and sharing id extracted from album share link
 fn parse_share_link(share_link: &Url) -> Result<(Url, Url, SharingId)> {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -178,6 +225,7 @@ impl Display for InvalidApiResponse {
 #[cfg(test)]
 mod tests {
     use reqwest::cookie::Jar;
+    use syno_api::foto::browse::item::dto::{Additional, Address, Item};
 
     use crate::test_helpers::{self, MockHttpClient};
 
@@ -237,5 +285,105 @@ mod tests {
         let _ = sut.login();
 
         http_client.checkpoint();
+    }
+
+    #[test]
+    fn metadata_location_prioritizes_village() {
+        let photo = Item {
+            additional: Some(Additional {
+                address: Some(Address {
+                    village: "Tiny Village".to_string(),
+                    town: "Small Town".to_string(),
+                    city: "Big City".to_string(),
+                    county: "Bounty County".to_string(),
+                    state: "Solid State".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let result = photo.location().area;
+
+        assert_eq!(result, Some("Tiny Village".to_string()));
+    }
+
+    #[test]
+    fn metadata_location_prioritizes_town() {
+        let photo = Item {
+            additional: Some(Additional {
+                address: Some(Address {
+                    town: "Small Town".to_string(),
+                    city: "Big City".to_string(),
+                    county: "Bounty County".to_string(),
+                    state: "Solid State".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let result = photo.location().area;
+
+        assert_eq!(result, Some("Small Town".to_string()));
+    }
+
+    #[test]
+    fn metadata_location_prioritizes_city() {
+        let photo = Item {
+            additional: Some(Additional {
+                address: Some(Address {
+                    city: "Big City".to_string(),
+                    county: "Bounty County".to_string(),
+                    state: "Solid State".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let result = photo.location().area;
+
+        assert_eq!(result, Some("Big City".to_string()));
+    }
+
+    #[test]
+    fn metadata_location_prioritizes_county() {
+        let photo = Item {
+            additional: Some(Additional {
+                address: Some(Address {
+                    county: "Bounty County".to_string(),
+                    state: "Solid State".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let result = photo.location().area;
+
+        assert_eq!(result, Some("Bounty County".to_string()));
+    }
+
+    #[test]
+    fn metadata_location_prioritizes_state() {
+        let photo = Item {
+            additional: Some(Additional {
+                address: Some(Address {
+                    state: "Solid State".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let result = photo.location().area;
+
+        assert_eq!(result, Some("Solid State".to_string()));
     }
 }

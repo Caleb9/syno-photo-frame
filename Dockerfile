@@ -22,8 +22,8 @@
 # use the default builder (skip the `docker buildx` command above) and
 # omit the `--builder` and `--platform` options.
 #
-# To build for Debian bullseye, change the build stage base image
-# (`FROM ...`) to rust:bullseye.
+# To build for older Debian versions, change 'trixie' int the build
+# stage base image (`FROM ...`) to another tag, e.g. rust:bookworm.
 #
 # To cross-compile for 32bit Raspberry Pi, use the `--platform
 # linux/arm/v7` option in the commands above. Note that currently it's
@@ -36,7 +36,7 @@
 FROM rust:trixie AS build
 
 RUN DEBIAN_FRONTEND=noninteractive apt update && \
-    apt install -y libsdl2-dev libssl-dev lintian && \
+    apt install -y libsdl2-dev libsdl2-gfx-dev libsdl2-ttf-dev libssl-dev lintian && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
