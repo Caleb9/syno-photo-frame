@@ -9,8 +9,8 @@ Photos](https://www.synology.com/en-global/dsm/feature/photos) and
 
 <img src="doc/syno-photo-frame.png" width=600 />
 
-Features include speed control, transition effects, and a blurry
-background fill.
+Features include speed control, transition effects, blurry background
+fill, and date and location display.
 
 <img src="doc/Slideshow.png" width=600 alt="Extra space gets blurry background" />
 
@@ -37,6 +37,7 @@ __If you like the project, give it a star ⭐, or consider becoming a__
     - [Auto Brightness](#auto-brightness)
     - [Start from a Random Photo and in Random Order](#start-from-a-random-photo-and-in-random-order)
     - [Change the Transition Effect](#change-the-transition-effect)
+    - [Display Shooting Date and Location](#display-shooting-date-and-location)
     - [Customize the Splash-Screen](#customize-the-splash-screen)
   - [Disclaimer](#disclaimer)
 
@@ -48,7 +49,7 @@ I developed this app for a DIY digital photo frame project using a
 from my Synology NAS over LAN.
 
 Why not use Synology Photos in a web browser directly? There are two
-reasons. First, the current version of Synology Photos web app (1.7.x
+reasons. First, the current version of Synology Photos web app (1.8.x
 at the time of writing) does not allow slideshow speed adjustments and
 changes photos every 3 or 4 seconds - way too fast for a photo
 frame. Second, running a full web browser is more resource-demanding
@@ -158,6 +159,8 @@ platform where Rust and [SDL](https://www.libsdl.org/) are available.
    apt upgrade -y && \
    apt install -y \
        libsdl2-dev \
+       libsdl2-gfx-dev \
+       libsdl2-ttf-dev \
        libssl-dev'
    ```
 
@@ -275,6 +278,22 @@ random order.
 Use the `--transition` (or `-t`) option to select the type of
 transition effect for changing photos. Use `--help` option to display
 valid values.
+
+### Display Shooting Date and Location
+
+Use the `--display-photo-info` to show shooting date and location (if
+available) on screen. This setting is off by default.
+
+The date format is controlled by operating system's locale: `LC_ALL`,
+`LC_TIME`, or `LANG` environment variable, in order of descending
+priority. You can prepend `syno-photo-frame` command with the
+variable, e.g.
+
+```bash
+LC_ALL="en_GB.UTF-8" syno-photo-frame ...
+```
+
+Find out list of installed locales with `locale -a`.
 
 ### Customize the Splash-Screen
 

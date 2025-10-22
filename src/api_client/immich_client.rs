@@ -2,16 +2,20 @@ use std::sync::OnceLock;
 
 use anyhow::{Result, bail};
 use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use regex::Regex;
 
 use crate::{
     LoginError,
     api_client::{
-        ApiClient, SharingId, SortBy,
-        immich_client::dto::{Album, AlbumInfo, Asset, AssetsInfo},
+        ApiClient, Metadata, SharingId, SortBy,
+        immich_client::dto::{
+            AlbumInfo, AlbumResponseDto, AssetResponseDto, ExifResponseDto, MySharedLink,
+        },
     },
     cli::SourceSize,
     http::{HttpClient, HttpResponse, Url, read_response},
+    metadata::Location,
 };
 
 pub struct ImmichApiClient<'a, H> {
@@ -22,7 +26,7 @@ pub struct ImmichApiClient<'a, H> {
 }
 
 impl<H: HttpClient> ApiClient for ImmichApiClient<'_, H> {
-    type Photo = Asset;
+    type Photo = AssetResponseDto;
 
     fn is_logged_in(&self) -> bool {
         false
@@ -36,13 +40,13 @@ impl<H: HttpClient> ApiClient for ImmichApiClient<'_, H> {
     }
 
     fn get_photo_metadata(&self, sort_by: SortBy) -> Result<Vec<Self::Photo>> {
-        let Album { id, .. } = self.get_my_shared_link_album()?;
+        let AlbumResponseDto { id, .. } = self.get_my_shared_link_album()?;
         let url = Url::parse(&format!("{}/albums/{id}", self.api_url))?;
         let response = self
             .http_client
             .get(url.as_str(), &[("key", &self.sharing_id)])?;
         read_response(response, |r| {
-            let mut dto = r.json::<AssetsInfo>()?;
+            let mut dto = r.json::<AlbumInfo>()?;
             Self::sort_assets(&mut dto.assets, sort_by);
             Ok(dto.assets)
         })
@@ -66,7 +70,7 @@ impl<H: HttpClient> ApiClient for ImmichApiClient<'_, H> {
 }
 
 impl<H: HttpClient> ImmichApiClient<'_, H> {
-    fn get_my_shared_link_album(&self) -> Result<Album> {
+    fn get_my_shared_link_album(&self) -> Result<AlbumResponseDto> {
         let url = Url::parse(&format!("{}/shared-links/me", self.api_url))?;
         let response = self.http_client.get(
             url.as_str(),
@@ -76,17 +80,20 @@ impl<H: HttpClient> ImmichApiClient<'_, H> {
             ],
         )?;
         read_response(response, |r| {
-            let dto = r.json::<AlbumInfo>()?;
+            let dto = r.json::<MySharedLink>()?;
             Ok(dto.album)
         })
     }
 
-    fn sort_assets(assets: &mut [Asset], sort_by: SortBy) {
-        assets.sort_by(|a, b| match (&a.exif_info, &b.exif_info) {
-            (Some(a_exif), Some(b_exif)) if matches!(sort_by, SortBy::TakenTime) => {
-                a_exif.date_time_original.cmp(&b_exif.date_time_original)
+    fn sort_assets(assets: &mut [AssetResponseDto], sort_by: SortBy) {
+        assets.sort_by(|a, b| {
+            if matches!(sort_by, SortBy::TakenTime) {
+                a.exif_info
+                    .date_time_original
+                    .cmp(&b.exif_info.date_time_original)
+            } else {
+                a.original_file_name.cmp(&b.original_file_name)
             }
-            _ => a.original_file_name.cmp(&b.original_file_name),
         })
     }
 }
@@ -108,6 +115,17 @@ impl<'a, H> ImmichApiClient<'a, H> {
     }
 }
 
+impl Metadata for AssetResponseDto {
+    fn date(&self) -> DateTime<Utc> {
+        self.local_date_time
+    }
+
+    fn location(&self) -> Location {
+        let ExifResponseDto { city, country, .. } = &self.exif_info;
+        Location::new(city.clone(), country.clone())
+    }
+}
+
 /// Returns Immich API URL and sharing id extracted from album share link
 fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId)> {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -120,36 +138,42 @@ fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId)> {
 }
 
 mod dto {
+    use chrono::{DateTime, Utc};
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize)]
+    pub struct MySharedLink {
+        pub album: AlbumResponseDto,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct AlbumResponseDto {
+        pub id: String,
+    }
+
+    #[derive(Debug, Deserialize)]
     pub struct AlbumInfo {
-        pub album: Album,
+        pub assets: Vec<AssetResponseDto>,
     }
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct Album {
+    pub struct AssetResponseDto {
         pub id: String,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct AssetsInfo {
-        pub assets: Vec<Asset>,
-    }
-
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct Asset {
-        pub id: String,
+        /// Used for sorting by taken time
         pub original_file_name: String,
-        pub exif_info: Option<ExifInfo>,
+        /// Time adjusted to timezone where photo has been taken, used for displaying on screen
+        pub local_date_time: DateTime<Utc>,
+        pub exif_info: ExifResponseDto,
     }
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct ExifInfo {
-        pub date_time_original: String,
+    pub struct ExifResponseDto {
+        pub date_time_original: Option<DateTime<Utc>>,
+        pub city: Option<String>,
+        pub country: Option<String>,
     }
 }
 

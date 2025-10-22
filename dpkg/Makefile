@@ -12,7 +12,7 @@ all:
 	@cargo build --release
 # Create package build dir hierarchy
 	@mkdir -p \
-		$(dpkg_name)/bin \
+		$(dpkg_name)/usr/bin \
 		$(dpkg_name)/usr/share/doc/$(name) \
 		$(dpkg_name)/DEBIAN
 	@chmod -R 0755 $(dpkg_name)
@@ -23,8 +23,8 @@ all:
 	@sed -i 's/^Version: 0.0.0/Version: $(VERSION)/' $(dpkg_name)/DEBIAN/control
 	@sed -i 's/^Architecture:/Architecture: $(arch)/' $(dpkg_name)/DEBIAN/control
 # Trim the binary
-	@objcopy --strip-debug --strip-unneeded ../target/release/$(name) $(dpkg_name)/bin/$(name)
-	@chmod 0755 $(dpkg_name)/bin/$(name)
+	@objcopy --strip-debug --strip-unneeded ../target/release/$(name) $(dpkg_name)/usr/bin/$(name)
+	@chmod 0755 $(dpkg_name)/usr/bin/$(name)
 	@gzip -c --best -k -n changelog > $(dpkg_name)/usr/share/doc/$(name)/changelog.gz
 	@chmod 0644 $(dpkg_name)/usr/share/doc/$(name)/changelog.gz
 	@dpkg-deb --root-owner-group --build $(dpkg_name)

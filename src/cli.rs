@@ -40,6 +40,13 @@ pub struct Cli {
         value_parser = try_parse_duration)]
     pub photo_change_interval: Duration,
 
+    /// Enable printing of photo date and location (if available)
+    ///
+    /// Date format is determined by the system's locale. Adjust LC_ALL, LC_TIME or LANG environment
+    /// variables to control the format (see https://wiki.debian.org/Locale). Fallback: POSIX
+    #[arg(long, default_value_t = false)]
+    pub display_photo_info: bool,
+
     /// Slideshow ordering
     #[arg(short = 'o', long, value_enum, default_value_t = Order::ByDate)]
     pub order: Order,

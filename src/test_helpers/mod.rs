@@ -5,7 +5,7 @@ use std::time::Duration;
 use syno_api::{
     dto::ApiResponse,
     foto::browse::item::dto::Item,
-    foto::browse::item::dto::{Additional, Thumbnail},
+    foto::browse::item::dto::{Additional, Address, Thumbnail},
 };
 
 use crate::http::{self, CookieStore, Jar, MockHttpResponse, StatusCode, Url};
@@ -101,10 +101,16 @@ pub fn new_success_response_with_json<T: DeserializeOwned + Send + 'static>(
 pub fn new_photo_dto(id: u32, cache_key: &str) -> Item {
     Item {
         id,
+        time: 1760788393,
         additional: Some(Additional {
             thumbnail: Some(Thumbnail {
                 cache_key: cache_key.to_string(),
                 unit_id: id,
+            }),
+            address: Some(Address {
+                city: "Copenhagen".to_string(),
+                country: "Denmark".to_string(),
+                ..Default::default()
             }),
             ..Default::default()
         }),
@@ -127,7 +133,7 @@ pub fn is_list_form(form: &[(&str, &str)]) -> bool {
         ("api", syno_api::foto::browse::item::API),
         ("method", "list"),
         ("version", "4"),
-        ("additional", "[\"thumbnail\"]"),
+        ("additional", "[\"thumbnail\", \"address\"]"),
         ("offset", "0"),
         ("limit", "5000"),
         ("sort_by", "takentime"),

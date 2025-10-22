@@ -7,11 +7,13 @@ use std::thread::sleep as thread_sleep;
 
 use anyhow::{Result, bail};
 use bytes::Bytes;
+use chrono::Locale;
 
 use crate::{
     api_client::ApiClient,
     cli::{Order, SourceSize},
     http::{InvalidHttpResponse, StatusCode},
+    metadata::Metadata,
     rand::Random,
 };
 
@@ -25,10 +27,12 @@ pub struct Slideshow<A: ApiClient, R> {
     order: Order,
     random_start: bool,
     source_size: SourceSize,
+    /// Defines formatting of date for info box
+    locale: Locale,
 }
 
 impl<A: ApiClient, R: Random> Slideshow<A, R> {
-    pub const fn new(api_client: A, random: R) -> Self {
+    pub const fn new(api_client: A, random: R, locale: Locale) -> Self {
         Self {
             api_client,
             random,
@@ -36,6 +40,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
             order: Order::ByDate,
             random_start: false,
             source_size: SourceSize::L,
+            locale,
         }
     }
 
@@ -54,7 +59,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
         self
     }
 
-    pub fn get_next_photo(&mut self) -> Result<Bytes> {
+    pub fn get_next_photo(&mut self) -> Result<BytesPhoto> {
         const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(1);
         /* Loop here prevents display of error screen when the photo has simply been removed from
          * the album since we fetched its metadata. */
@@ -75,7 +80,12 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
                     thread_sleep(LOOP_SLEEP_DURATION);
                     continue;
                 }
-                _ => break photo_bytes_result,
+                _ => {
+                    break Ok(BytesPhoto {
+                        bytes: photo_bytes_result?,
+                        info: photo.try_format_as_localized_string(self.locale),
+                    });
+                }
             }
         }
     }
@@ -117,6 +127,12 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct BytesPhoto {
+    pub bytes: Bytes,
+    pub info: String,
 }
 
 /// Photo has been removed since we fetched its metadata, try next one.
@@ -199,7 +215,13 @@ mod tests {
 
         /* Assert */
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Bytes::from_static(&[42, 1, 255, 50]));
+        assert_eq!(
+            result.unwrap(),
+            BytesPhoto {
+                bytes: Bytes::from_static(&[42, 1, 255, 50]),
+                info: "10/18/25 Copenhagen, Denmark".to_string(),
+            }
+        );
 
         let expected_remaining_display_sequence = [
             test_helpers::new_photo_dto(3, "photo3"),
@@ -577,7 +599,7 @@ mod tests {
     ) -> Slideshow<SynoApiClient<'a, H, C>, R> {
         let share_link = Url::parse(share_link).unwrap();
         let api_client = SynoApiClient::build(http_client, cookie_store, &share_link).unwrap();
-        Slideshow::new(api_client, random)
+        Slideshow::new(api_client, random, Locale::POSIX)
     }
 
     fn logged_in_cookie_store(url: &str) -> impl CookieStore {

@@ -7,13 +7,14 @@ use regex::Regex;
 use crate::{
     cli::{Backend, Order, SourceSize},
     http::Url,
+    metadata::Metadata,
 };
 
 pub mod immich_client;
 pub mod syno_client;
 
 pub trait ApiClient {
-    type Photo: Send;
+    type Photo: Metadata + Send;
 
     fn is_logged_in(&self) -> bool;
 
