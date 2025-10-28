@@ -1,2 +1,3 @@
-syno-photo-frame_*_arm64/
+syno-photo-frame_*_*/
 *.deb
+*.sha256
