@@ -34,21 +34,22 @@ pub fn get_text_box_dst_rect(
     (text_surface_w, text_surface_h): (u32, u32),
     rotation: Rotation,
 ) -> Result<Rect> {
-    let (screen_w, screen_h) = (safe_u32_to_i32(screen_w), safe_u32_to_i32(screen_h));
-    let (text_surface_w, text_surface_h) = (
-        safe_u32_to_i32(text_surface_w),
-        safe_u32_to_i32(text_surface_h),
-    );
     let screen_size_min = screen_w.min(screen_h);
-    const PADDING_SCREEN_SIZE_DIVISOR: i32 = 72;
+    const PADDING_SCREEN_SIZE_DIVISOR: u32 = 72;
     let padding = screen_size_min / PADDING_SCREEN_SIZE_DIVISOR;
     let (text_surface_w, text_surface_h) = scale_to_screen(
         (screen_w, screen_h),
         (text_surface_w, text_surface_h),
         padding,
     );
-    let rotated_x = screen_w - text_surface_w - padding;
-    let rotated_y = screen_h - text_surface_h - padding;
+    let (rotated_x, rotated_y) = (
+        screen_w
+            .saturating_sub(text_surface_w)
+            .saturating_sub(padding),
+        screen_h
+            .saturating_sub(text_surface_h)
+            .saturating_sub(padding),
+    );
     let (x, y) = match rotation {
         Rotation::D0 => (padding, rotated_y),
         Rotation::D90 => (padding, padding),
@@ -56,15 +57,11 @@ pub fn get_text_box_dst_rect(
         Rotation::D270 => (rotated_x, rotated_y),
     };
     Ok(Rect::new(
-        x,
-        y,
-        text_surface_w as u32,
-        text_surface_h as u32,
+        x.min(i32::MAX as u32) as i32,
+        y.min(i32::MAX as u32) as i32,
+        text_surface_w,
+        text_surface_h,
     ))
-}
-
-fn safe_u32_to_i32(x: u32) -> i32 {
-    i32::try_from(x).unwrap_or(i32::MAX)
 }
 
 /// Scale text to guarantee it will fit on the screen.
@@ -73,22 +70,31 @@ fn safe_u32_to_i32(x: u32) -> i32 {
 /// in quite ugly looking, aliased fonts, but the hope is that the initial font size adjustment, and
 /// the amount of text to be rendered is going to make this situation rare.
 fn scale_to_screen(
-    (screen_w, screen_h): (i32, i32),
-    (text_w, text_h): (i32, i32),
-    padding: i32,
-) -> (i32, i32) {
-    let diff_w = screen_w - text_w;
-    let diff_h = screen_h - text_h;
-    if diff_w < 0 || diff_h < 0 {
-        let diff = diff_w.min(diff_h);
-        let factor = 1f64 + diff as f64 / text_w.max(text_h) as f64;
-        let (w, h) = (text_w as f64 * factor, text_h as f64 * factor);
-        let padding_factor = (w.max(h) - (padding * 2) as f64) / w.max(h);
-        let (w, h) = (w * padding_factor, h * padding_factor);
-        (w.round() as i32, h.round() as i32)
-    } else {
-        (text_w, text_h)
+    (screen_w, screen_h): (u32, u32),
+    (text_w, text_h): (u32, u32),
+    padding: u32,
+) -> (u32, u32) {
+    // guard for degenerate input
+    if text_w == 0 || text_h == 0 {
+        return (0, 0);
     }
+
+    let (available_w, available_h) = (
+        screen_w.saturating_sub(padding.saturating_mul(2)) as f64,
+        screen_h.saturating_sub(padding.saturating_mul(2)) as f64,
+    );
+    let (text_w_f, text_h_f) = (text_w as f64, text_h as f64);
+
+    let (scale_w, scale_h) = (available_w / text_w_f, available_h / text_h_f);
+    let scale = scale_w.min(scale_h).clamp(0.0, 1.0);
+
+    let (new_w, new_h) = (
+        (text_w_f * scale).round() as u32,
+        (text_h_f * scale).round() as u32,
+    );
+
+    // ensure at least 1 pixel if original was non-zero
+    (new_w.max(1), new_h.max(1))
 }
 
 #[cfg(test)]
@@ -206,5 +212,43 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Rect::new(8, 102, 784, 490))
+    }
+
+    #[test]
+    fn scale_to_screen_with_zero_dimensions_returns_zero_zero() {
+        assert_eq!(scale_to_screen((800, 600), (0, 100), 8), (0, 0));
+        assert_eq!(scale_to_screen((800, 600), (100, 0), 8), (0, 0));
+        assert_eq!(scale_to_screen((800, 600), (0, 0), 8), (0, 0));
+    }
+
+    #[test]
+    fn scale_to_screen_when_available_area_is_zero_returns_minimum_one() {
+        // available area -> screen 10 with padding 10 => saturating_sub -> 0
+        assert_eq!(scale_to_screen((10, 10), (100, 100), 10), (1, 1));
+    }
+
+    #[test]
+    fn scale_to_screen_scales_down_by_available_dimension() {
+        // matches the behavior exercised through get_text_box_dst_rect tests:
+        // available_w = 800 - 16 = 784, so 1200 * (784/1200) = 784, 100 * (...) = 65
+        assert_eq!(scale_to_screen((800, 600), (1200, 100), 8), (784, 65));
+    }
+
+    #[test]
+    fn get_text_box_dst_rect_with_zero_sized_screen_and_large_text_returns_1x1() {
+        // screen is zero; padding is 0; scale_to_screen will return (1,1)
+        let result = get_text_box_dst_rect((0, 0), (100, 100), Rotation::D0).unwrap();
+        assert_eq!(result, Rect::new(0, 0, 1, 1));
+    }
+
+    #[test]
+    fn get_text_box_dst_rect_with_zero_sized_text_returns_zero_sized_rect() {
+        // text surface (0,0) should be preserved; padding = 600/72 = 8 for 800x600
+        const SCREEN: (u32, u32) = (800, 600);
+
+        let result = get_text_box_dst_rect(SCREEN, (0, 0), Rotation::D0).unwrap();
+
+        // x = padding = 8, y = screen_h - 0 - padding = 592
+        assert_eq!(result, Rect::new(8, 592, 0, 0));
     }
 }
