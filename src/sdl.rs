@@ -119,6 +119,9 @@ impl Sdl for SdlWrapper<'_> {
 
     // TODO: there's too much logic here for the thin SDL wrapper. Refactor this.
     fn render_info_box(&mut self, text: &str, rotation: Rotation) -> Result<()> {
+        if text.is_empty() {
+            return Ok(());
+        }
         const ORANGE: Color = Color::RGB(255, 170, 0);
         let fill_surface = self.fonts.fill.render(text).blended(ORANGE)?;
         let (w, h) = fill_surface.size();
