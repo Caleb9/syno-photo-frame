@@ -2,7 +2,7 @@
 use std::time::Instant;
 
 #[cfg(test)]
-use mock_instant::Instant;
+use mock_instant::thread_local::Instant;
 
 use anyhow::Result;
 
@@ -128,7 +128,7 @@ impl FadeToBlackPhase {
 mod tests {
     use std::time::Duration;
 
-    use mock_instant::MockClock;
+    use mock_instant::thread_local::MockClock;
     use mockall::Sequence;
 
     use crate::sdl::MockSdl;

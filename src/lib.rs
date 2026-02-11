@@ -15,7 +15,7 @@ use std::{
 #[cfg(not(test))]
 use std::{thread::sleep as thread_sleep, time::Instant};
 #[cfg(test)]
-use {mock_instant::Instant, test_helpers::fake_sleep as thread_sleep};
+use {mock_instant::thread_local::Instant, test_helpers::fake_sleep as thread_sleep};
 
 use anyhow::{Result, bail};
 use chrono::Locale;
@@ -335,7 +335,7 @@ impl Error for QuitEvent {}
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
-    use mock_instant::MockClock;
+    use mock_instant::thread_local::MockClock;
     use syno_api::dto::{ApiResponse, Error, List};
 
     use super::*;

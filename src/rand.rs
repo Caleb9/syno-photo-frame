@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use rand::{Rng, prelude::SliceRandom, rng};
+use rand::{RngExt, prelude::SliceRandom, rng};
 
 pub trait Random {
     fn random_range(&self, range: Range<u32>) -> u32 {
