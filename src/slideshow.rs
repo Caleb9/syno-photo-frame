@@ -120,6 +120,9 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
             Order::ByDate | Order::ByName => {
                 self.photo_display_sequence.extend(photos.into_iter().rev())
             }
+            Order::ByDateDescending | Order::ByNameDescending => {
+                self.photo_display_sequence.extend(photos)
+            }
             Order::Random => {
                 self.photo_display_sequence.extend(photos);
                 self.random.shuffle(&mut self.photo_display_sequence);
@@ -225,6 +228,84 @@ mod tests {
 
         let expected_remaining_display_sequence = [
             test_helpers::new_photo_dto(3, "photo3"),
+            test_helpers::new_photo_dto(2, "photo2"),
+        ];
+        assert_eq!(
+            slideshow.photo_display_sequence,
+            expected_remaining_display_sequence
+        );
+
+        client_mock.checkpoint();
+    }
+
+    #[test]
+    fn when_desc_order_then_get_next_photo_fetches_last_photo() {
+        /* Arrange */
+        const SHARE_LINK: &str = "http://fake.dsm.addr/aa/sharing/FakeSharingId";
+        const EXPECTED_API_URL: &str = "http://fake.dsm.addr/aa/sharing/webapi/entry.cgi";
+        const EXPECTED_THUMBNAIL_API_URL: &str =
+            "http://fake.dsm.addr/synofoto/api/v2/p/Thumbnail/get";
+        let mut client_mock = MockHttpClient::new();
+        const LAST_PHOTO_ID: u32 = 1;
+        const LAST_PHOTO_CACHE_KEY: &str = "photo1";
+        client_mock
+            .expect_post()
+            .withf(|url, form, header| {
+                url == EXPECTED_API_URL
+                    && test_helpers::is_list_form(form)
+                    && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
+            })
+            .return_once(|_, _, _| {
+                Ok(test_helpers::new_success_response_with_json(List {
+                    list: vec![
+                        test_helpers::new_photo_dto(1, "photo1"),
+                        test_helpers::new_photo_dto(2, "photo2"),
+                        test_helpers::new_photo_dto(LAST_PHOTO_ID, LAST_PHOTO_CACHE_KEY),
+                    ],
+                }))
+            });
+        client_mock
+            .expect_get()
+            .withf(|url, query| {
+                url == EXPECTED_THUMBNAIL_API_URL
+                    && test_helpers::is_get_photo_form(
+                        query,
+                        "FakeSharingId",
+                        &LAST_PHOTO_ID.to_string(),
+                        LAST_PHOTO_CACHE_KEY,
+                        "xl",
+                    )
+            })
+            .return_once(|_, _| {
+                let mut get_photo_response = test_helpers::new_ok_response();
+                get_photo_response
+                    .expect_bytes()
+                    .return_once(|| Ok(Bytes::from_static(&[42, 1, 255, 50])));
+                Ok(get_photo_response)
+            });
+        let cookie_store = Jar::default();
+        let mut slideshow = new_syno_slideshow(
+            &client_mock,
+            FakeRandom::default(),
+            &cookie_store,
+            SHARE_LINK,
+        ).with_ordering(Order::ByDateDescending);
+
+        /* Act */
+        let result = slideshow.get_next_photo();
+
+        /* Assert */
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            BytesPhoto {
+                bytes: Bytes::from_static(&[42, 1, 255, 50]),
+                info: "10/18/25 Copenhagen, Denmark".to_string(),
+            }
+        );
+
+        let expected_remaining_display_sequence = [
+            test_helpers::new_photo_dto(1, "photo1"),
             test_helpers::new_photo_dto(2, "photo2"),
         ];
         assert_eq!(
@@ -464,7 +545,7 @@ mod tests {
             slideshow.photo_display_sequence,
             vec![test_helpers::new_photo_dto(
                 NEXT_NEXT_PHOTO_ID,
-                NEXT_NEXT_PHOTO_CACHE_KEY
+                NEXT_NEXT_PHOTO_CACHE_KEY,
             )]
         );
     }

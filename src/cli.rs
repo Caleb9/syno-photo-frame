@@ -120,12 +120,16 @@ pub enum Backend {
 /// Slideshow ordering
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum Order {
-    /// by photo shooting date
+    /// by photo shooting date in ascending order (older first)
     ByDate,
-    /// by photo file name
+    /// by photo file name in ascending order
     ByName,
     /// randomly
     Random,
+    /// by photo shooting date in descending order (newer first)
+    ByDateDescending,
+    /// by photo file name in descending order
+    ByNameDescending,
 }
 
 /// Transition to next photo effect

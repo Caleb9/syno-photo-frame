@@ -58,8 +58,8 @@ impl From<Order> for SortBy {
         match value {
             /* Random is not an option in the API. Randomization is implemented client-side and
              * essentially makes the sort_by query parameter irrelevant. */
-            Order::ByDate | Order::Random => SortBy::TakenTime,
-            Order::ByName => SortBy::FileName,
+            Order::ByDate | Order::ByDateDescending | Order::Random => SortBy::TakenTime,
+            Order::ByName | Order::ByNameDescending => SortBy::FileName,
         }
     }
 }
