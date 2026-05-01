@@ -29,10 +29,11 @@ pub struct Slideshow<A: ApiClient, R> {
     source_size: SourceSize,
     /// Defines formatting of date for info box
     locale: Locale,
+    format: String,
 }
 
 impl<A: ApiClient, R: Random> Slideshow<A, R> {
-    pub const fn new(api_client: A, random: R, locale: Locale) -> Self {
+    pub fn new(api_client: A, random: R, locale: Locale, format: Option<&str>) -> Self {
         Self {
             api_client,
             random,
@@ -41,6 +42,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
             random_start: false,
             source_size: SourceSize::L,
             locale,
+            format: format.unwrap_or("%x").to_string(),
         }
     }
 
@@ -83,7 +85,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
                 _ => {
                     break Ok(BytesPhoto {
                         bytes: photo_bytes_result?,
-                        info: photo.try_format_as_localized_string(self.locale),
+                        info: photo.try_format_as_localized_string(self.locale, &self.format),
                     });
                 }
             }
@@ -289,7 +291,8 @@ mod tests {
             FakeRandom::default(),
             &cookie_store,
             SHARE_LINK,
-        ).with_ordering(Order::ByDateDescending);
+        )
+        .with_ordering(Order::ByDateDescending);
 
         /* Act */
         let result = slideshow.get_next_photo();
@@ -680,7 +683,7 @@ mod tests {
     ) -> Slideshow<SynoApiClient<'a, H, C>, R> {
         let share_link = Url::parse(share_link).unwrap();
         let api_client = SynoApiClient::build(http_client, cookie_store, &share_link).unwrap();
-        Slideshow::new(api_client, random, Locale::POSIX)
+        Slideshow::new(api_client, random, Locale::POSIX, None)
     }
 
     fn logged_in_cookie_store(url: &str) -> impl CookieStore {

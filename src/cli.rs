@@ -40,13 +40,6 @@ pub struct Cli {
         value_parser = try_parse_duration)]
     pub photo_change_interval: Duration,
 
-    /// Enable printing of photo date and location (if available)
-    ///
-    /// Date format is determined by the system's locale. Adjust LC_ALL, LC_TIME or LANG environment
-    /// variables to control the format (see https://wiki.debian.org/Locale). Fallback: POSIX
-    #[arg(long, default_value_t = false)]
-    pub display_photo_info: bool,
-
     /// Slideshow ordering
     #[arg(short = 'o', long, value_enum, default_value_t = Order::ByDate)]
     pub order: Order,
@@ -76,6 +69,21 @@ pub struct Cli {
     #[arg(long)]
     pub splash: Option<PathBuf>,
 
+    /// Enable display of photo shooting datetime and location (if available)
+    ///
+    /// Date format is determined by the --datetime-format option, and system's locale.
+    #[arg(long, default_value_t = false)]
+    pub display_photo_info: bool,
+
+    /// Format for datetime display. Requires --display-photo-info.
+    ///
+    /// See https://docs.rs/chrono/latest/chrono/format/strftime/ for possible formatting syntax.
+    /// Default is "%x" (date only, according to system's locale). Adjust LC_ALL, LC_TIME or LANG
+    /// environment variables to control the format (see https://wiki.debian.org/Locale).
+    /// Fallback locale: POSIX
+    #[arg(long)]
+    pub datetime_format: Option<String>,
+    
     /// HTTP request timeout in seconds
     ///
     /// Must be greater or equal to 5. When server does not respond within the timeout, an

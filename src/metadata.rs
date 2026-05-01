@@ -11,10 +11,10 @@ use crate::env::Env;
 pub trait Metadata {
     fn date(&self) -> DateTime<Utc>;
     fn location(&self) -> Location;
-    fn try_format_as_localized_string(&self, locale: Locale) -> String {
+    fn try_format_as_localized_string(&self, locale: Locale, format: &str) -> String {
         let (date, location) = (self.date(), self.location());
         let mut output = String::new();
-        output.push_str(date.format_localized("%x", locale).to_string().as_str());
+        output.push_str(date.format_localized(format, locale).to_string().as_str());
         if let (None, None) = (&location.area, &location.country) {
             return output;
         }
@@ -189,8 +189,8 @@ mod tests {
             ..Default::default()
         };
 
-        let result_pl = photo.try_format_as_localized_string(Locale::pl_PL);
-        let result_gb = photo.try_format_as_localized_string(Locale::en_GB);
+        let result_pl = photo.try_format_as_localized_string(Locale::pl_PL, "%x");
+        let result_gb = photo.try_format_as_localized_string(Locale::en_GB, "%x");
 
         assert_eq!(result_pl, "18.10.2025");
         assert_eq!(result_gb, "18/10/25");
@@ -209,7 +209,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = photo.try_format_as_localized_string(Locale::en_GB);
+        let result = photo.try_format_as_localized_string(Locale::en_GB, "%x");
 
         assert_eq!(result, "01/01/70 Denmark");
     }
@@ -227,7 +227,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = photo.try_format_as_localized_string(Locale::en_GB);
+        let result = photo.try_format_as_localized_string(Locale::en_GB, "%x");
 
         assert_eq!(result, "01/01/70 Copenhagen");
     }
@@ -246,7 +246,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = photo.try_format_as_localized_string(Locale::en_GB);
+        let result = photo.try_format_as_localized_string(Locale::en_GB, "%x");
 
         assert_eq!(result, "01/01/70 Copenhagen, Denmark");
     }

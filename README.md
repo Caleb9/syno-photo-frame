@@ -282,12 +282,14 @@ valid values.
 ### Display Shooting Date and Location
 
 Use the `--display-photo-info` to show shooting date and location (if
-available) on screen. This setting is off by default.
+available) on screen. This setting is **off by default**.
 
-The date format is controlled by operating system's locale: `LC_ALL`,
-`LC_TIME`, or `LANG` environment variable, in order of descending
-priority. You can prepend `syno-photo-frame` command with the
-variable, e.g.
+Formatting of the date and time can be specified using the
+`--datetime-format` option and operating system's locale. See
+[here](https://docs.rs/chrono/latest/chrono/format/strftime/) for
+formatting syntax. Set `LC_ALL`, `LC_TIME`, or `LANG` environment
+variable, in order of descending priority. You can prepend
+`syno-photo-frame` command with the variable, e.g.
 
 ```bash
 LC_ALL="en_GB.UTF-8" syno-photo-frame ...

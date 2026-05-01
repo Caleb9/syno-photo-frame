@@ -253,10 +253,15 @@ where
     if !api_client.is_logged_in() {
         api_client.login()?;
     }
-    let mut slideshow = Slideshow::new(api_client, random, Locale::from_env(env))
-        .with_ordering(cli.order)
-        .with_random_start(cli.random_start)
-        .with_source_size(cli.source_size);
+    let mut slideshow = Slideshow::new(
+        api_client,
+        random,
+        Locale::from_env(env),
+        cli.datetime_format.as_deref(),
+    )
+    .with_ordering(cli.order)
+    .with_random_start(cli.random_start)
+    .with_source_size(cli.source_size);
     Ok(thread_scope.spawn(move || {
         loop {
             let photo_result = slideshow.get_next_photo().and_then(|photo| {
