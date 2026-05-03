@@ -49,7 +49,7 @@ I developed this app for a DIY digital photo frame project using a
 from my Synology NAS over LAN.
 
 Why not use Synology Photos in a web browser directly? There are two
-reasons. First, the current version of Synology Photos web app (1.8.x
+reasons. First, the current version of Synology Photos web app (1.9.x
 at the time of writing) does not allow slideshow speed adjustments and
 changes photos every 3 or 4 seconds - way too fast for a photo
 frame. Second, running a full web browser is more resource-demanding
