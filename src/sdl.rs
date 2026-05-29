@@ -2,7 +2,9 @@
 
 pub(crate) use sdl2::{pixels::Color, rect::Rect};
 
+use crate::{QuitEvent, cli::Rotation, error::AnyhowErrorMapper, info_box};
 use anyhow::Result;
+use sdl2::pixels::PixelFormat;
 use sdl2::{
     EventPump, VideoSubsystem,
     event::Event,
@@ -12,8 +14,6 @@ use sdl2::{
     rwops::RWops,
     video::{DisplayMode, Window, WindowContext},
 };
-
-use crate::{QuitEvent, cli::Rotation, error::AnyhowErrorMapper, info_box};
 
 /// Isolates [sdl2::Sdl] context for testing
 #[cfg_attr(test, mockall::automock)]
@@ -31,7 +31,7 @@ pub trait Sdl {
     fn handle_quit_event(&mut self) -> Result<(), QuitEvent>;
 
     /// Renders text on the canvas. Used for shooting info box.
-    fn render_info_box(&mut self, text: &str, rotation: Rotation) -> Result<()>;
+    fn render_info_box(&mut self, text: &str, rotation: Rotation, color: &str) -> Result<()>;
 }
 
 /// Index of a texture to operate on (used mainly by transition effects)
@@ -118,12 +118,16 @@ impl Sdl for SdlWrapper<'_> {
     }
 
     // TODO: there's too much logic here for the thin SDL wrapper. Refactor this.
-    fn render_info_box(&mut self, text: &str, rotation: Rotation) -> Result<()> {
+    fn render_info_box(&mut self, text: &str, rotation: Rotation, color: &str) -> Result<()> {
         if text.is_empty() {
             return Ok(());
         }
-        const ORANGE: Color = Color::RGB(255, 170, 0);
-        let fill_surface = self.fonts.fill.render(text).blended(ORANGE)?;
+        // const ORANGE: Color = Color::RGB(255, 170, 0);
+        let color = Color::from_u32(
+            &PixelFormat::try_from(PixelFormatEnum::RGB888).map_err_to_anyhow()?,
+            u32::from_str_radix(color, 16)?,
+        );
+        let fill_surface = self.fonts.fill.render(text).blended(color)?;
         let (w, h) = fill_surface.size();
         let dst_rect = Rect::new(
             self.fonts.stroke_outline_width as i32,

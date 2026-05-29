@@ -320,7 +320,7 @@ impl DynamicImagePhoto {
 
 fn overlay_info_box(sdl: &mut impl Sdl, photo: &DynamicImagePhoto, cli: &Cli) -> Result<()> {
     if cli.display_photo_info {
-        sdl.render_info_box(&photo.info, cli.rotation)?;
+        sdl.render_info_box(&photo.info, cli.rotation, &cli.text_color)?;
         sdl.present_canvas();
     }
     Ok(())

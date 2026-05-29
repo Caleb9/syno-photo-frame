@@ -83,7 +83,14 @@ pub struct Cli {
     /// Fallback locale: POSIX
     #[arg(long)]
     pub datetime_format: Option<String>,
-    
+
+    /// Color of datetime and location text
+    ///
+    /// Useful only with `--display-photo-info`. Accepts hexadecimal RGB color code (e.g. "FFAA00").
+    /// Orange by default.
+    #[arg(long, default_value = "FFAA00")]
+    pub text_color: String,
+
     /// HTTP request timeout in seconds
     ///
     /// Must be greater or equal to 5. When server does not respond within the timeout, an
