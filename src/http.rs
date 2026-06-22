@@ -21,6 +21,7 @@ pub trait HttpClient {
         &self,
         url: &str,
         form: &[(&str, &str)],
+        query: Option<&[(&str, &str)]>,
         header: Option<(&str, &str)>,
     ) -> Result<Self::Response>;
 
@@ -47,9 +48,13 @@ impl HttpClient for ReqwestClient {
         &self,
         url: &str,
         form: &[(&str, &str)],
+        query: Option<&[(&str, &str)]>,
         header: Option<(&str, &str)>,
     ) -> Result<ReqwestResponse> {
         let mut request_builder = ReqwestClient::post(self, url).form(form);
+        if let Some(query) = query {
+            request_builder = request_builder.query(query);
+        }
         if let Some((key, value)) = header {
             request_builder = request_builder.header(key, value);
         }

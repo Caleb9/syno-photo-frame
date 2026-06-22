@@ -20,6 +20,7 @@ mock! {
             &self,
             url: &str,
             form: &[(&'a str, &'a str)],
+            query: Option<&'a[(&'a str, &'a str)]>,
             header: Option<(&'a str, &'a str)>,
         ) -> Result<MockHttpResponse>;
 

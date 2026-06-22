@@ -142,7 +142,8 @@ where
         ),
         Backend::Immich => slideshow_loop(
             cli,
-            ImmichApiClient::build(http_client, &cli.share_link)?.with_password(&cli.password),
+            ImmichApiClient::build(http_client, cookie_store, &cli.share_link)?
+                .with_password(&cli.password),
             sdl,
             random,
             update_check_receiver,
@@ -361,10 +362,12 @@ mod tests {
         let mut client_stub = MockHttpClient::new();
         client_stub
             .expect_post()
-            .withf(|url, form, _| {
-                url == EXPECTED_API_URL && test_helpers::is_login_form(form, "FakeSharingId")
+            .withf(|url, form, query, _| {
+                url == EXPECTED_API_URL
+                    && test_helpers::is_login_form(form, "FakeSharingId")
+                    && query.is_none()
             })
-            .returning(|_, _, _| {
+            .returning(|_, _, _, _| {
                 let mut error_response = test_helpers::new_ok_response();
                 error_response
                     .expect_json::<ApiResponse<Login>>()
@@ -409,7 +412,7 @@ mod tests {
     #[test]
     fn when_login_fails_with_http_error_then_loop_terminates() {
         let mut client_stub = MockHttpClient::new();
-        client_stub.expect_post().returning(|_, _, _| {
+        client_stub.expect_post().returning(|_, _, _, _| {
             let mut error_response = MockHttpResponse::new();
             error_response
                 .expect_status()
@@ -452,12 +455,12 @@ mod tests {
         let mut client_stub = MockHttpClient::new();
         client_stub
             .expect_post()
-            .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
+            .withf(|_, form, _, _| test_helpers::is_login_form(form, "FakeSharingId"))
+            .return_once(|_, _, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         client_stub
             .expect_post()
-            .withf(|_, form, _| test_helpers::is_list_form(form))
-            .returning(|_, _, _| {
+            .withf(|_, form, _, _| test_helpers::is_list_form(form))
+            .returning(|_, _, _, _| {
                 Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![
                         test_helpers::new_photo_dto(1, "missing_photo1"),
@@ -548,12 +551,12 @@ mod tests {
         let mut client_stub = MockHttpClient::new();
         client_stub
             .expect_post()
-            .withf(|_, form, _| test_helpers::is_login_form(form, "FakeSharingId"))
-            .return_once(|_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
+            .withf(|_, form, _, _| test_helpers::is_login_form(form, "FakeSharingId"))
+            .return_once(|_, _, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
         client_stub
             .expect_post()
-            .withf(|_, form, _| test_helpers::is_list_form(form))
-            .returning(|_, _, _| {
+            .withf(|_, form, _, _| test_helpers::is_list_form(form))
+            .returning(|_, _, _, _| {
                 Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![
                         test_helpers::new_photo_dto(1, "bad_photo1"),

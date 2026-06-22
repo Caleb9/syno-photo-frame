@@ -39,6 +39,7 @@ where
         &self,
         url: &str,
         form: &[(&str, &str)],
+        query: Option<&[(&str, &str)]>,
         header: Option<(&str, &str)>,
     ) -> Result<Self::Response> {
         /* Obfuscate password from the form parameters */
@@ -50,7 +51,7 @@ where
             self.level,
             "POST {url}, form: {obfuscated_form:?}, header: {header:?}"
         );
-        let response = self.client.post(url, form, header);
+        let response = self.client.post(url, form, query, header);
         log::log!(self.level, "{response:?}");
         response
     }

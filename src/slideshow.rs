@@ -174,12 +174,13 @@ mod tests {
         const FIRST_PHOTO_CACHE_KEY: &str = "photo1";
         client_mock
             .expect_post()
-            .withf(|url, form, header| {
+            .withf(|url, form, query, header| {
                 url == EXPECTED_API_URL
                     && test_helpers::is_list_form(form)
+                    && query.is_none()
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
-            .return_once(|_, _, _| {
+            .return_once(|_, _, _, _| {
                 Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![
                         test_helpers::new_photo_dto(FIRST_PHOTO_ID, FIRST_PHOTO_CACHE_KEY),
@@ -252,12 +253,13 @@ mod tests {
         const LAST_PHOTO_CACHE_KEY: &str = "photo1";
         client_mock
             .expect_post()
-            .withf(|url, form, header| {
+            .withf(|url, form, query, header| {
                 url == EXPECTED_API_URL
                     && test_helpers::is_list_form(form)
+                    && query.is_none()
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
-            .return_once(|_, _, _| {
+            .return_once(|_, _, _, _| {
                 Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![
                         test_helpers::new_photo_dto(1, "photo1"),
@@ -329,8 +331,8 @@ mod tests {
         const RANDOM_PHOTO_CACHE_KEY: &str = "photo43";
         client_mock
             .expect_post()
-            .withf(|_, form, _| test_helpers::is_list_form(form))
-            .return_once(|_, _, _| {
+            .withf(|_, form, _, _| test_helpers::is_list_form(form))
+            .return_once(|_, _, _, _| {
                 Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![
                         test_helpers::new_photo_dto(1, "photo1"),
@@ -384,8 +386,8 @@ mod tests {
             let mut client_mock = MockHttpClient::new();
             client_mock
                 .expect_post()
-                .withf(|_, form, _| test_helpers::is_list_form(form))
-                .return_once(|_, _, _| {
+                .withf(|_, form, _, _| test_helpers::is_list_form(form))
+                .return_once(|_, _, _, _| {
                     Ok(test_helpers::new_success_response_with_json(List {
                         list: vec![test_helpers::new_photo_dto(43, "photo43")],
                     }))
@@ -560,8 +562,8 @@ mod tests {
         let mut client_mock = MockHttpClient::new();
         client_mock
             .expect_post()
-            .withf(|_, form, _| test_helpers::is_list_form(form))
-            .return_once(|_, _, _| {
+            .withf(|_, form, _, _| test_helpers::is_list_form(form))
+            .return_once(|_, _, _, _| {
                 Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![
                         test_helpers::new_photo_dto(0, "photo0"),
@@ -625,8 +627,8 @@ mod tests {
         const SECOND_PHOTO_CACHE_KEY: &str = "photo1";
         client_mock
             .expect_post()
-            .withf(|_, form, _| test_helpers::is_list_form(form))
-            .return_once(|_, _, _| {
+            .withf(|_, form, _, _| test_helpers::is_list_form(form))
+            .return_once(|_, _, _, _| {
                 Ok(test_helpers::new_success_response_with_json(List {
                     list: vec![
                         test_helpers::new_photo_dto(FIRST_PHOTO_ID, FIRST_PHOTO_CACHE_KEY),

@@ -44,7 +44,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         ];
         let response = self
             .http_client
-            .post(self.api_url.as_str(), &params, None)
+            .post(self.api_url.as_str(), &params, None, None)
             .map_err(LoginError)?;
         let status = response.status();
         if status.is_success() {
@@ -76,6 +76,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         let response = self.http_client.post(
             self.api_url.as_str(),
             &params,
+            None,
             Some(("X-SYNO-SHARING", &self.sharing_id)),
         )?;
         read_response(response, |response| {
@@ -270,8 +271,10 @@ mod tests {
         let mut http_client = MockHttpClient::new();
         http_client
             .expect_post()
-            .withf(|_, form, _| form.contains(&("password", &format!("\"{PASSWORD}\""))))
-            .return_once(move |_, _, _| Ok(test_helpers::new_success_response_with_json(Login {})));
+            .withf(|_, form, _, _| form.contains(&("password", &format!("\"{PASSWORD}\""))))
+            .return_once(move |_, _, _, _| {
+                Ok(test_helpers::new_success_response_with_json(Login {}))
+            });
         let password = Some(PASSWORD.to_owned());
         let cookie_store = Jar::default();
         let sut = SynoApiClient::build(
