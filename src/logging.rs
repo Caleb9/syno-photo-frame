@@ -5,7 +5,7 @@ use core::fmt::Debug;
 use anyhow::Result;
 use log::Level;
 
-use crate::http::{HttpClient, HttpResponse};
+use crate::http::{HttpClient, HttpResponse, Query};
 
 /// Adds logging to [HttpClient]
 #[derive(Clone, Debug)]
@@ -39,7 +39,7 @@ where
         &self,
         url: &str,
         form: &[(&str, &str)],
-        query: Option<&[(&str, &str)]>,
+        query: Query,
         header: Option<(&str, &str)>,
     ) -> Result<Self::Response> {
         /* Obfuscate password from the form parameters */
@@ -52,6 +52,18 @@ where
             "POST {url}, form: {obfuscated_form:?}, header: {header:?}"
         );
         let response = self.client.post(url, form, query, header);
+        log::log!(self.level, "{response:?}");
+        response
+    }
+
+    fn post_json(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+        json: &serde_json::Value,
+    ) -> Result<Self::Response> {
+        log::log!(self.level, "POST {url}, json: {json:?}");
+        let response = self.client.post_json(url, query, json);
         log::log!(self.level, "{response:?}");
         response
     }

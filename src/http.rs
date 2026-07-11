@@ -13,6 +13,9 @@ use serde::de::DeserializeOwned;
 #[cfg(test)]
 pub(crate) use reqwest::cookie::Jar;
 
+#[derive(Debug)]
+pub struct Query<'a>(pub &'a [(&'a str, &'a str)]);
+
 /// Isolates [reqwest::blocking::Client] for testing
 pub trait HttpClient {
     type Response: HttpResponse;
@@ -21,8 +24,15 @@ pub trait HttpClient {
         &self,
         url: &str,
         form: &[(&str, &str)],
-        query: Option<&[(&str, &str)]>,
+        query: Query,
         header: Option<(&str, &str)>,
+    ) -> Result<Self::Response>;
+
+    fn post_json(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+        json: &serde_json::Value,
     ) -> Result<Self::Response>;
 
     fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<Self::Response>;
@@ -48,17 +58,26 @@ impl HttpClient for ReqwestClient {
         &self,
         url: &str,
         form: &[(&str, &str)],
-        query: Option<&[(&str, &str)]>,
+        query: Query,
         header: Option<(&str, &str)>,
     ) -> Result<ReqwestResponse> {
-        let mut request_builder = ReqwestClient::post(self, url).form(form);
-        if let Some(query) = query {
-            request_builder = request_builder.query(query);
-        }
+        let mut request_builder = ReqwestClient::post(self, url).query(&query.0).form(form);
         if let Some((key, value)) = header {
             request_builder = request_builder.header(key, value);
         }
         Ok(request_builder.send()?)
+    }
+
+    fn post_json(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+        json: &serde_json::Value,
+    ) -> Result<Self::Response> {
+        Ok(ReqwestClient::post(self, url)
+            .query(query)
+            .json(json)
+            .send()?)
     }
 
     fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<ReqwestResponse> {
@@ -103,5 +122,15 @@ pub struct InvalidHttpResponse(pub StatusCode);
 impl std::fmt::Display for InvalidHttpResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Invalid HTTP response code: {}", self.0)
+    }
+}
+
+impl Query<'_> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub const fn empty() -> Query<'static> {
+        Query(&[])
     }
 }

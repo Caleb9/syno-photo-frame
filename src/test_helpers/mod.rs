@@ -8,7 +8,7 @@ use syno_api::{
     foto::browse::item::dto::{Additional, Address, Thumbnail},
 };
 
-use crate::http::{self, CookieStore, Jar, MockHttpResponse, StatusCode, Url};
+use crate::http::{self, CookieStore, Jar, MockHttpResponse, Query, StatusCode, Url};
 
 mock! {
     pub HttpClient {}
@@ -20,8 +20,15 @@ mock! {
             &self,
             url: &str,
             form: &[(&'a str, &'a str)],
-            query: Option<&'a[(&'a str, &'a str)]>,
+            query: Query<'a>,
             header: Option<(&'a str, &'a str)>,
+        ) -> Result<MockHttpResponse>;
+
+        fn post_json<'a>(
+            &self,
+            url: &str,
+            query: &[(&'a str, &'a str)],
+            json: &serde_json::Value,
         ) -> Result<MockHttpResponse>;
 
         fn get<'a>(&self, url: &str, query: &[(&'a str, &'a str)]) -> Result<MockHttpResponse>;

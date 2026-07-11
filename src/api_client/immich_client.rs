@@ -1,82 +1,72 @@
 use std::sync::OnceLock;
 
-use crate::{
-    LoginError,
-    api_client::{
-        ApiClient, Metadata, SharingId, SortBy,
-        immich_client::dto::{
-            AlbumResponseDto, AssetResponseDto, BucketAssetsDto, BucketResponseDto,
-            ExifResponseDto, MySharedLink,
-        },
-    },
-    cli::SourceSize,
-    http::{HttpClient, HttpResponse, Url, read_response},
-    metadata::Location,
-};
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use reqwest::cookie::CookieStore;
+use serde_json::json;
 
-pub struct ImmichApiClient<'a, H, C> {
+use crate::{
+    LoginError,
+    api_client::{
+        ApiClient, SharingId, SortBy,
+        immich_client::dto::{
+            AlbumResponseDto, AssetResponseDto, ExifResponseDto, GetAlbumInfoResponseDto,
+            GetAssetInfoResponseDto, GetServerVersionResponseDto, SearchAssetsResponseDto,
+            SharedLinkResponseDto,
+        },
+    },
+    cli::SourceSize,
+    http::{HttpClient, HttpResponse, Query, Url, read_response},
+    metadata::{Location, Metadata},
+};
+
+pub struct ImmichApiClient<'a, H> {
     http_client: &'a H,
-    cookie_store: &'a C,
     api_url: Url,
     sharing_id: SharingId,
     password: &'a Option<String>,
 }
 
-impl<H: HttpClient, C: CookieStore> ApiClient for ImmichApiClient<'_, H, C> {
+impl<H: HttpClient> ApiClient for ImmichApiClient<'_, H> {
     type Photo = AssetResponseDto;
 
     fn is_logged_in(&self) -> bool {
-        // TODO: Immich sets cookies with expiration time of 1 day. How to check if the cookie is
-        // still valid for a large album which doesn't reinitialize before the expiration time?
-        self.cookie_store.cookies(&self.api_url).is_some()
+        false
     }
 
     fn login(&self) -> Result<(), LoginError> {
+        let server_version = self.get_server_version().map_err(LoginError)?;
+        if !server_version.is_supported() {
+            return Err(LoginError(anyhow!(
+                "Immich server version 2.x.x, 3.0.2 or higher is required."
+            )));
+        }
+        /* Immich does not need logging in. Check if the shared link is pointing to an album,
+         * and if not, return LoginError so the app terminates. */
         self.get_my_shared_link_album().map_err(LoginError)?;
         Ok(())
     }
 
     fn get_photo_metadata(&self, sort_by: SortBy) -> Result<Vec<Self::Photo>> {
         let AlbumResponseDto { id, .. } = self.get_my_shared_link_album()?;
-        let url = Url::parse(&format!("{}/timeline/buckets", self.api_url))?;
-        let (key, album_id, order) = (
-            ("key", self.sharing_id.as_str()),
-            ("albumId", id.as_str()),
-            ("order", "desc"),
-        );
-        let response = self
-            .http_client
-            .get(url.as_str(), &[album_id, key, order])?;
-        let buckets: Vec<BucketResponseDto> = read_response(response, HttpResponse::json)?;
-        let bucket_assets: Vec<BucketAssetsDto> = buckets
-            .iter()
-            .map(|b| {
-                let url = Url::parse(&format!("{}/timeline/bucket", self.api_url))?;
-                let response = self.http_client.get(
-                    url.as_str(),
-                    &[album_id, key, order, ("timeBucket", &b.time_bucket)],
-                )?;
-                read_response(response, HttpResponse::json)
-            })
-            .collect::<Result<_>>()?;
-        let mut assets: Vec<AssetResponseDto> = bucket_assets
-            .iter()
-            .flat_map(|a| a.id.iter())
-            .map(|id| {
-                /* TODO: this is pretty inefficient, there's a separate request sent sequentially
-                 * for each asset in the album! Find out if it's possible to batch them together. */
-                let url = Url::parse(&format!("{}/assets/{id}", self.api_url))?;
-                let response = self.http_client.get(url.as_str(), &[key])?;
-                read_response(response, HttpResponse::json)
-            })
-            .collect::<Result<_>>()?;
+        let server_version = self.get_server_version()?;
+        let mut assets = if server_version.major >= 3 {
+            self.get_photo_metadata_v3(&id)
+        } else {
+            debug_assert_eq!(server_version.major, 2);
+            self.get_photo_metadata_v2(&id)
+        }?;
         Self::sort_assets(&mut assets, sort_by);
         Ok(assets)
+    }
+
+    fn get_exif(&self, Self::Photo { id, .. }: &Self::Photo) -> Result<impl Metadata> {
+        let url = Url::parse(&format!("{}/assets/{id}", self.api_url))?;
+        let response = self
+            .http_client
+            .get(url.as_str(), &[("key", &self.sharing_id)])?;
+        read_response(response, HttpResponse::json::<GetAssetInfoResponseDto>)
     }
 
     fn get_photo_bytes(
@@ -97,30 +87,56 @@ impl<H: HttpClient, C: CookieStore> ApiClient for ImmichApiClient<'_, H, C> {
     }
 }
 
-impl<H: HttpClient, C> ImmichApiClient<'_, H, C> {
+impl<H: HttpClient> ImmichApiClient<'_, H> {
+    fn get_server_version(&self) -> Result<GetServerVersionResponseDto> {
+        let url = Url::parse(&format!("{}/server/version", self.api_url))?;
+        let response = self.http_client.get(url.as_str(), &[])?;
+        read_response(response, HttpResponse::json)
+    }
+
     fn get_my_shared_link_album(&self) -> Result<AlbumResponseDto> {
         let response = if let Some(password) = self.password {
             let url = Url::parse(&format!("{}/shared-links/login", self.api_url))?;
             self.http_client.post(
                 url.as_str(),
                 &[("password", password)],
-                Some(&[("key", &self.sharing_id)]),
+                Query(&[("key", &self.sharing_id)]),
                 None,
-            )?
+            )
         } else {
             let url = Url::parse(&format!("{}/shared-links/me", self.api_url))?;
             self.http_client
-                .get(url.as_str(), &[("key", &self.sharing_id)])?
-        };
-        read_response(response, |r| Ok(r.json::<MySharedLink>()?.album))
+                .get(url.as_str(), &[("key", &self.sharing_id)])
+        }?;
+        read_response(response, |r| Ok(r.json::<SharedLinkResponseDto>()?.album))
+    }
+
+    fn get_photo_metadata_v2(&self, id: &str) -> Result<Vec<AssetResponseDto>> {
+        let url = Url::parse(&format!("{}/albums/{id}", self.api_url))?;
+        let response = self
+            .http_client
+            .get(url.as_str(), &[("key", &self.sharing_id)])?;
+        read_response(response, |r| {
+            Ok(r.json::<GetAlbumInfoResponseDto>()?.assets)
+        })
+    }
+
+    fn get_photo_metadata_v3(&self, id: &str) -> Result<Vec<AssetResponseDto>> {
+        let url = Url::parse(&format!("{}/search/metadata", self.api_url))?;
+        let response = self.http_client.post_json(
+            url.as_str(),
+            &[("key", self.sharing_id.as_str())],
+            &json!({"albumIds": [id]}),
+        )?;
+        read_response(response, |r| {
+            Ok(r.json::<SearchAssetsResponseDto>()?.assets.items)
+        })
     }
 
     fn sort_assets(assets: &mut [AssetResponseDto], sort_by: SortBy) {
         assets.sort_by(|a, b| {
             if matches!(sort_by, SortBy::TakenTime) {
-                a.exif_info
-                    .date_time_original
-                    .cmp(&b.exif_info.date_time_original)
+                a.local_date_time.cmp(&b.local_date_time)
             } else {
                 a.original_file_name.cmp(&b.original_file_name)
             }
@@ -128,12 +144,11 @@ impl<H: HttpClient, C> ImmichApiClient<'_, H, C> {
     }
 }
 
-impl<'a, H, C> ImmichApiClient<'a, H, C> {
-    pub fn build(http_client: &'a H, cookie_store: &'a C, share_link: &Url) -> Result<Self> {
+impl<'a, H> ImmichApiClient<'a, H> {
+    pub fn build(http_client: &'a H, share_link: &Url) -> Result<Self> {
         let (api_url, sharing_id) = parse_share_link(share_link)?;
         Ok(Self {
             http_client,
-            cookie_store,
             api_url,
             sharing_id,
             password: &None,
@@ -146,7 +161,7 @@ impl<'a, H, C> ImmichApiClient<'a, H, C> {
     }
 }
 
-impl Metadata for AssetResponseDto {
+impl Metadata for GetAssetInfoResponseDto {
     fn date(&self) -> DateTime<Utc> {
         self.local_date_time
     }
@@ -157,7 +172,7 @@ impl Metadata for AssetResponseDto {
     }
 }
 
-/// Returns Immich API URL and sharing id extracted from album share link
+/// Returns Immich API URL and sharing id extracted from an album share link
 fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId)> {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"^(https?://.+)/share/([^/]+)/?$").unwrap());
@@ -168,31 +183,60 @@ fn parse_share_link(share_link: &Url) -> Result<(Url, SharingId)> {
     Ok((api_url, SharingId(captures[2].to_owned())))
 }
 
+impl GetServerVersionResponseDto {
+    const V300: Self = Self {
+        major: 3,
+        minor: 0,
+        patch: 0,
+    };
+
+    const V301: Self = Self {
+        major: 3,
+        minor: 0,
+        patch: 1,
+    };
+
+    fn is_supported(&self) -> bool {
+        self.major == 2 || (self.major == 3 && self != &Self::V300 && self != &Self::V301)
+    }
+}
+
 mod dto {
     use chrono::{DateTime, Utc};
     use serde::Deserialize;
 
+    #[derive(Debug, Deserialize, Eq, PartialEq)]
+    pub struct GetServerVersionResponseDto {
+        pub major: u32,
+        pub minor: u32,
+        pub patch: u32,
+    }
+
     #[derive(Debug, Deserialize)]
-    pub struct MySharedLink {
+    pub struct SharedLinkResponseDto {
         pub album: AlbumResponseDto,
     }
 
     #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
     pub struct AlbumResponseDto {
         pub id: String,
     }
 
+    /// Immich API v2.x.x returns assets from GET /albums/{id} endpoint
     #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct BucketResponseDto {
-        pub time_bucket: String,
+    pub struct GetAlbumInfoResponseDto {
+        pub assets: Vec<AssetResponseDto>,
+    }
+
+    /// Immich API > v3.0.2 returns assets from POST /search/metadata endpoint
+    #[derive(Debug, Deserialize)]
+    pub struct SearchAssetsResponseDto {
+        pub assets: SearchAssetResponseDto,
     }
 
     #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct BucketAssetsDto {
-        pub id: Vec<String>,
+    pub struct SearchAssetResponseDto {
+        pub items: Vec<AssetResponseDto>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -201,17 +245,23 @@ mod dto {
         pub id: String,
         /// Used for sorting by taken time
         pub original_file_name: String,
-        /// Time adjusted to time-zone where the photo has been taken, used for displaying on-screen
-        /// info
+        /// Time adjusted to time-zone where the photo has been taken, used for sorting by taken
+        /// date
         pub local_date_time: DateTime<Utc>,
-        pub exif_info: ExifResponseDto,
         pub thumbhash: String,
     }
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
+    pub struct GetAssetInfoResponseDto {
+        /// Time adjusted to time-zone where the photo has been taken, used for displaying on-screen
+        /// info
+        pub local_date_time: DateTime<Utc>,
+        pub exif_info: ExifResponseDto,
+    }
+
+    #[derive(Debug, Deserialize)]
     pub struct ExifResponseDto {
-        pub date_time_original: Option<DateTime<Utc>>,
         pub city: Option<String>,
         pub country: Option<String>,
     }

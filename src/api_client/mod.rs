@@ -14,13 +14,15 @@ pub mod immich_client;
 pub mod syno_client;
 
 pub trait ApiClient {
-    type Photo: Metadata + Send;
+    type Photo: Send;
 
     fn is_logged_in(&self) -> bool;
 
     fn login(&self) -> Result<(), LoginError>;
 
     fn get_photo_metadata(&self, sort_by: SortBy) -> Result<Vec<Self::Photo>>;
+
+    fn get_exif(&self, photo: &Self::Photo) -> Result<impl Metadata>;
 
     fn get_photo_bytes(&self, photo: &Self::Photo, source_size: SourceSize) -> Result<Bytes>;
 }

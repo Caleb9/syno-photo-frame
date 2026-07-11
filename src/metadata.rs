@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn metadata_try_format_as_localized_string_formats_date_according_to_locale() {
-        let photo = syno_api::foto::browse::item::dto::Item {
+        let photo = &syno_api::foto::browse::item::dto::Item {
             time: 1760788393,
             ..Default::default()
         };
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn metadata_try_format_as_localized_string_contains_country() {
-        let photo = syno_api::foto::browse::item::dto::Item {
+        let photo = &syno_api::foto::browse::item::dto::Item {
             additional: Some(Additional {
                 address: Some(Address {
                     country: "Denmark".to_string(),
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn metadata_try_format_as_localized_string_contains_area() {
-        let photo = syno_api::foto::browse::item::dto::Item {
+        let photo = &syno_api::foto::browse::item::dto::Item {
             additional: Some(Additional {
                 address: Some(Address {
                     city: "Copenhagen".to_string(),
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn metadata_try_format_as_localized_string_contains_area_and_country() {
-        let photo = syno_api::foto::browse::item::dto::Item {
+        let photo = &syno_api::foto::browse::item::dto::Item {
             additional: Some(Additional {
                 address: Some(Address {
                     city: "Copenhagen".to_string(),

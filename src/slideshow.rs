@@ -85,7 +85,7 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
                 _ => {
                     break Ok(BytesPhoto {
                         bytes: photo_bytes_result?,
-                        info: photo.try_format_as_localized_string(self.locale, &self.format),
+                        info: self.get_photo_info_from_exif(&photo),
                     });
                 }
             }
@@ -132,11 +132,21 @@ impl<A: ApiClient, R: Random> Slideshow<A, R> {
         }
         Ok(())
     }
+
+    fn get_photo_info_from_exif(&self, photo: &A::Photo) -> String {
+        self.api_client
+            .get_exif(photo)
+            .map(|p| p.try_format_as_localized_string(self.locale, &self.format))
+            .map_err(|e| log::error!("{e}"))
+            .unwrap_or("".to_string())
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct BytesPhoto {
     pub bytes: Bytes,
+
+    /// Photo shooting info to display on the screen, e.g. "10/18/25 Copenhagen, Denmark"
     pub info: String,
 }
 
@@ -177,7 +187,7 @@ mod tests {
             .withf(|url, form, query, header| {
                 url == EXPECTED_API_URL
                     && test_helpers::is_list_form(form)
-                    && query.is_none()
+                    && query.is_empty()
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
             .return_once(|_, _, _, _| {
@@ -256,7 +266,7 @@ mod tests {
             .withf(|url, form, query, header| {
                 url == EXPECTED_API_URL
                     && test_helpers::is_list_form(form)
-                    && query.is_none()
+                    && query.is_empty()
                     && *header == Some(("X-SYNO-SHARING", "FakeSharingId"))
             })
             .return_once(|_, _, _, _| {

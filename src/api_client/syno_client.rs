@@ -12,10 +12,10 @@ use serde::Deserialize;
 use syno_api::dto::{ApiResponse, List};
 
 use crate::{
-    api_client::{ApiClient, LoginError, Metadata, SharingId, SortBy},
+    api_client::{ApiClient, LoginError, SharingId, SortBy},
     cli::SourceSize,
-    http::{CookieStore, HttpClient, HttpResponse, InvalidHttpResponse, Url, read_response},
-    metadata::Location,
+    http::{CookieStore, HttpClient, HttpResponse, InvalidHttpResponse, Query, Url, read_response},
+    metadata::{Location, Metadata},
 };
 
 pub struct SynoApiClient<'a, H, C> {
@@ -44,7 +44,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         ];
         let response = self
             .http_client
-            .post(self.api_url.as_str(), &params, None, None)
+            .post(self.api_url.as_str(), &params, Query::empty(), None)
             .map_err(LoginError)?;
         let status = response.status();
         if status.is_success() {
@@ -76,7 +76,7 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
         let response = self.http_client.post(
             self.api_url.as_str(),
             &params,
-            None,
+            Query::empty(),
             Some(("X-SYNO-SHARING", &self.sharing_id)),
         )?;
         read_response(response, |response| {
@@ -94,6 +94,10 @@ impl<H: HttpClient, C: CookieStore> ApiClient for SynoApiClient<'_, H, C> {
                     .list)
             }
         })
+    }
+
+    fn get_exif(&self, photo: &Self::Photo) -> Result<impl Metadata> {
+        Ok(photo)
     }
 
     fn get_photo_bytes(&self, photo: &Self::Photo, source_size: SourceSize) -> Result<Bytes> {
@@ -145,7 +149,7 @@ impl<'a, H, C> SynoApiClient<'a, H, C> {
     }
 }
 
-impl Metadata for syno_api::foto::browse::item::dto::Item {
+impl Metadata for &syno_api::foto::browse::item::dto::Item {
     fn date(&self) -> DateTime<Utc> {
         match self.time.try_into() {
             Ok(time) => DateTime::from_timestamp(time, 0).unwrap_or_default(),
@@ -292,7 +296,7 @@ mod tests {
 
     #[test]
     fn metadata_location_prioritizes_village() {
-        let photo = Item {
+        let photo = &Item {
             additional: Some(Additional {
                 address: Some(Address {
                     village: "Tiny Village".to_string(),
@@ -314,7 +318,7 @@ mod tests {
 
     #[test]
     fn metadata_location_prioritizes_town() {
-        let photo = Item {
+        let photo = &Item {
             additional: Some(Additional {
                 address: Some(Address {
                     town: "Small Town".to_string(),
@@ -335,7 +339,7 @@ mod tests {
 
     #[test]
     fn metadata_location_prioritizes_city() {
-        let photo = Item {
+        let photo = &Item {
             additional: Some(Additional {
                 address: Some(Address {
                     city: "Big City".to_string(),
@@ -355,7 +359,7 @@ mod tests {
 
     #[test]
     fn metadata_location_prioritizes_county() {
-        let photo = Item {
+        let photo = &Item {
             additional: Some(Additional {
                 address: Some(Address {
                     county: "Bounty County".to_string(),
@@ -374,7 +378,7 @@ mod tests {
 
     #[test]
     fn metadata_location_prioritizes_state() {
-        let photo = Item {
+        let photo = &Item {
             additional: Some(Additional {
                 address: Some(Address {
                     state: "Solid State".to_string(),

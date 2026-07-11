@@ -1,3 +1,9 @@
+syno-photo-frame (0.18.2) stable; urgency=low
+  [Piotr Karasinski ]
+  * Improved support for Immich (requires Immich v2.x.x, v3.0.2, or higher)
+
+ -- Piotr-Karasinski <7767011+Caleb9@users.noreply.github.com>  Thu, 16 Jul 2026 12:00:00 +0200
+
 syno-photo-frame (0.18.1) stable; urgency=low
   [Piotr Karasinski ]
   * Support Immich v3.

@@ -142,8 +142,7 @@ where
         ),
         Backend::Immich => slideshow_loop(
             cli,
-            ImmichApiClient::build(http_client, cookie_store, &cli.share_link)?
-                .with_password(&cli.password),
+            ImmichApiClient::build(http_client, &cli.share_link)?.with_password(&cli.password),
             sdl,
             random,
             update_check_receiver,
@@ -365,7 +364,7 @@ mod tests {
             .withf(|url, form, query, _| {
                 url == EXPECTED_API_URL
                     && test_helpers::is_login_form(form, "FakeSharingId")
-                    && query.is_none()
+                    && query.is_empty()
             })
             .returning(|_, _, _, _| {
                 let mut error_response = test_helpers::new_ok_response();
