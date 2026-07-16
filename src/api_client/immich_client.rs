@@ -134,13 +134,11 @@ impl<H: HttpClient> ImmichApiClient<'_, H> {
     }
 
     fn sort_assets(assets: &mut [AssetResponseDto], sort_by: SortBy) {
-        assets.sort_by(|a, b| {
-            if matches!(sort_by, SortBy::TakenTime) {
-                a.local_date_time.cmp(&b.local_date_time)
-            } else {
-                a.original_file_name.cmp(&b.original_file_name)
-            }
-        })
+        if let SortBy::TakenTime = sort_by {
+            assets.sort_by_key(|a| a.local_date_time);
+        } else {
+            assets.sort_by(|a, b| a.original_file_name.cmp(&b.original_file_name));
+        }
     }
 }
 
@@ -191,9 +189,8 @@ impl GetServerVersionResponseDto {
     };
 
     const V301: Self = Self {
-        major: 3,
-        minor: 0,
         patch: 1,
+        ..Self::V300
     };
 
     fn is_supported(&self) -> bool {
@@ -243,7 +240,7 @@ mod dto {
     #[serde(rename_all = "camelCase")]
     pub struct AssetResponseDto {
         pub id: String,
-        /// Used for sorting by taken time
+        /// Used for sorting by file name
         pub original_file_name: String,
         /// Time adjusted to time-zone where the photo has been taken, used for sorting by taken
         /// date
@@ -270,6 +267,7 @@ mod dto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::dto::*;
 
     #[test]
     fn parse_share_link_is_ok_for_valid_link() {
@@ -292,5 +290,19 @@ mod tests {
             assert_eq!(api_url.as_str(), expected_api_url);
             assert_eq!(sharing_id.0, "fake-Sharing-Id");
         }
+    }
+
+    #[test]
+    fn immich_v2xx_and_greater_than_v301_is_supported() {
+        assert!(GetServerVersionResponseDto { major: 2, minor: 7, patch: 5 }.is_supported());
+        assert!(GetServerVersionResponseDto { major: 3, minor: 0, patch: 2 }.is_supported());
+        assert!(GetServerVersionResponseDto { major: 3, minor: 0, patch: 3 }.is_supported());
+    }
+
+    #[test]
+    fn immich_v1xx_v300_and_v301_is_not_supported() {
+        assert!(!GetServerVersionResponseDto { major: 1, minor: 2, patch: 3 }.is_supported());
+        assert!(!GetServerVersionResponseDto::V300.is_supported());
+        assert!(!GetServerVersionResponseDto::V301.is_supported());
     }
 }

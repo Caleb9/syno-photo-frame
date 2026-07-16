@@ -60,7 +60,7 @@ impl FromEnv<Locale> for Locale {
                 .inspect_err(|_| {
                     log::warn!("Unknown locale '{var}'. Falling back to POSIX date format.")
                 })
-                .map_or(Locale::POSIX, |locale| locale)
+                .unwrap_or(Locale::POSIX)
         } else {
             log::warn!(
                 "Date format not set in locale (LC_ALL, LC_TIME, and LANG are all empty). \
