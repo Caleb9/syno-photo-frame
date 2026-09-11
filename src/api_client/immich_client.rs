@@ -12,8 +12,8 @@ use crate::{
         ApiClient, SharingId, SortBy,
         immich_client::dto::{
             AlbumResponseDto, AssetResponseDto, ExifResponseDto, GetAlbumInfoResponseDto,
-            GetAssetInfoResponseDto, GetServerVersionResponseDto, SearchAssetsResponseDto,
-            SharedLinkResponseDto,
+            GetAssetInfoResponseDto, GetServerVersionResponseDto, SearchAssetResponseDto,
+            SearchAssetsResponseDto, SharedLinkResponseDto,
         },
     },
     cli::SourceSize,
@@ -122,15 +122,29 @@ impl<H: HttpClient> ImmichApiClient<'_, H> {
     }
 
     fn get_photo_metadata_v3(&self, id: &str) -> Result<Vec<AssetResponseDto>> {
+        /* The POST /search/metadata endpoint is paginated. Without an explicit size it returns
+         * just the first page of assets, so we loop over all pages to fetch the whole album. */
+        const PAGE_SIZE: u32 = 1000;
         let url = Url::parse(&format!("{}/search/metadata", self.api_url))?;
-        let response = self.http_client.post_json(
-            url.as_str(),
-            &[("key", self.sharing_id.as_str())],
-            &json!({"albumIds": [id]}),
-        )?;
-        read_response(response, |r| {
-            Ok(r.json::<SearchAssetsResponseDto>()?.assets.items)
-        })
+        let mut assets = Vec::new();
+        let mut page: u32 = 1;
+        loop {
+            let response = self.http_client.post_json(
+                url.as_str(),
+                &[("key", self.sharing_id.as_str())],
+                &json!({"albumIds": [id], "page": page, "size": PAGE_SIZE}),
+            )?;
+            let SearchAssetResponseDto { items, next_page } = read_response(response, |r| {
+                Ok(r.json::<SearchAssetsResponseDto>()?.assets)
+            })?;
+            let is_last_page = next_page.is_none();
+            assets.extend(items);
+            if is_last_page {
+                break;
+            }
+            page += 1;
+        }
+        Ok(assets)
     }
 
     fn sort_assets(assets: &mut [AssetResponseDto], sort_by: SortBy) {
@@ -234,6 +248,9 @@ mod dto {
     #[derive(Debug, Deserialize)]
     pub struct SearchAssetResponseDto {
         pub items: Vec<AssetResponseDto>,
+        /// Index of the next page, or `None` on the last page. Used to paginate through the album.
+        #[serde(default)]
+        pub next_page: Option<u32>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -266,8 +283,8 @@ mod dto {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::dto::*;
+    use super::*;
 
     #[test]
     fn parse_share_link_is_ok_for_valid_link() {
@@ -294,15 +311,113 @@ mod tests {
 
     #[test]
     fn immich_v2xx_and_greater_than_v301_is_supported() {
-        assert!(GetServerVersionResponseDto { major: 2, minor: 7, patch: 5 }.is_supported());
-        assert!(GetServerVersionResponseDto { major: 3, minor: 0, patch: 2 }.is_supported());
-        assert!(GetServerVersionResponseDto { major: 3, minor: 0, patch: 3 }.is_supported());
+        assert!(
+            GetServerVersionResponseDto {
+                major: 2,
+                minor: 7,
+                patch: 5
+            }
+            .is_supported()
+        );
+        assert!(
+            GetServerVersionResponseDto {
+                major: 3,
+                minor: 0,
+                patch: 2
+            }
+            .is_supported()
+        );
+        assert!(
+            GetServerVersionResponseDto {
+                major: 3,
+                minor: 0,
+                patch: 3
+            }
+            .is_supported()
+        );
     }
 
     #[test]
     fn immich_v1xx_v300_and_v301_is_not_supported() {
-        assert!(!GetServerVersionResponseDto { major: 1, minor: 2, patch: 3 }.is_supported());
+        assert!(
+            !GetServerVersionResponseDto {
+                major: 1,
+                minor: 2,
+                patch: 3
+            }
+            .is_supported()
+        );
         assert!(!GetServerVersionResponseDto::V300.is_supported());
         assert!(!GetServerVersionResponseDto::V301.is_supported());
+    }
+
+    #[test]
+    fn get_photo_metadata_v3_follows_all_pages() {
+        use crate::{
+            http::{MockHttpResponse, StatusCode, Url},
+            test_helpers::MockHttpClient,
+        };
+
+        const SHARE_LINK: &str = "https://test.immich.addr/share/fake-Sharing-Id";
+        const EXPECTED_API_URL: &str = "https://test.immich.addr/api/search/metadata";
+        const ALBUM_ID: &str = "fake-album-id";
+
+        fn asset(id: &str) -> AssetResponseDto {
+            AssetResponseDto {
+                id: id.to_string(),
+                original_file_name: format!("{id}.jpg"),
+                local_date_time: "2025-01-01T00:00:00Z".parse().unwrap(),
+                thumbhash: format!("{id}-thumb"),
+            }
+        }
+
+        fn page_response(items: Vec<AssetResponseDto>, next_page: Option<u32>) -> MockHttpResponse {
+            let mut response = MockHttpResponse::new();
+            response.expect_status().return_const(StatusCode::OK);
+            response
+                .expect_json::<SearchAssetsResponseDto>()
+                .return_once(move || {
+                    Ok(SearchAssetsResponseDto {
+                        assets: SearchAssetResponseDto { items, next_page },
+                    })
+                });
+            response
+        }
+
+        let mut client_mock = MockHttpClient::new();
+        // First page announces a second page -> client must request it.
+        client_mock
+            .expect_post_json()
+            .withf(|url, query, json| {
+                url == EXPECTED_API_URL
+                    && *query == [("key", "fake-Sharing-Id")]
+                    && json["albumIds"] == serde_json::json!([ALBUM_ID])
+                    && json["page"] == 1
+            })
+            .times(1)
+            .return_once(|_, _, _| Ok(page_response(vec![asset("a"), asset("b")], Some(2))));
+        // Second page is the last one -> client must stop.
+        client_mock
+            .expect_post_json()
+            .withf(|url, query, json| {
+                url == EXPECTED_API_URL
+                    && *query == [("key", "fake-Sharing-Id")]
+                    && json["albumIds"] == serde_json::json!([ALBUM_ID])
+                    && json["page"] == 2
+            })
+            .times(1)
+            .return_once(|_, _, _| Ok(page_response(vec![asset("c")], None)));
+
+        let client = ImmichApiClient::build(&client_mock, &Url::parse(SHARE_LINK).unwrap())
+            .unwrap()
+            .with_password(&None);
+
+        let assets = client.get_photo_metadata_v3(ALBUM_ID).unwrap();
+
+        assert_eq!(
+            assets.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
+        client_mock.checkpoint();
     }
 }
