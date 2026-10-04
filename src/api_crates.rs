@@ -12,7 +12,7 @@ pub fn get_latest_version(client: &impl HttpClient) -> Result<dto::Crate> {
             .map(serde_json::from_str::<dto::Crate>)
             .filter_map(|r| r.ok())
             .rfind(|c| !c.yanked)
-            .ok_or(anyhow!("Unable to read creates.io response".to_string()))
+            .ok_or(anyhow!("Unable to read crates.io response".to_string()))
     } else {
         bail!("{:?}", status.canonical_reason().unwrap_or(status.as_str()))
     }
